@@ -17,8 +17,9 @@ bool isCellBlocked(int cellIdx, int movingColor, List<Player> players) {
   }
   final partnerId = (movingColor + 2) % 4;
   for (int i = 0; i < 4; i++) {
-    if (i != movingColor && i != partnerId && (counts[i] ?? 0) >= 2)
+    if (i != movingColor && i != partnerId && (counts[i] ?? 0) >= 2) {
       return true;
+    }
   }
   return false;
 }
@@ -27,8 +28,20 @@ bool hasOpponent(int pos, int myColor, List<Player> players) {
   final partnerId = (myColor + 2) % 4;
   for (final p in players) {
     if (p.id != myColor && p.id != partnerId) {
-      if (p.pieces.any((pc) => pc.state == PieceState.board && pc.pos == pos))
+      if (p.pieces.any((pc) => pc.state == PieceState.board && pc.pos == pos)) {
         return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool hasSameColorPiece(int pos, int myColor, List<Player> players) {
+  for (final p in players) {
+    if (p.id == myColor) {
+      if (p.pieces.any((pc) => pc.state == PieceState.board && pc.pos == pos)) {
+        return true;
+      }
     }
   }
   return false;
@@ -179,6 +192,28 @@ MoveDestination? calculateDestination(
         }
       }
       if (!hasAnyOtherMove) return null;
+    }
+  }
+  // Avoid stacking on own white square if possible
+  if (dest.targetState == PieceState.board &&
+      dest.targetPos == kWhiteSquares[player.id] &&
+      hasSameColorPiece(dest.targetPos, player.id, players)) {
+    if (pool.length > 1 && dieIndex != -1) {
+      final remainingPool = List<int>.from(pool)..removeAt(dieIndex);
+      bool hasAnyOtherMove = false;
+      outer:
+      for (final rVal in remainingPool) {
+        for (final p in player.pieces) {
+          if (p.id == piece.id) continue;
+          if (p.state == PieceState.home || p.hasKilledThisTurn) continue;
+          final d = calculateDestSimple(player, p, rVal, players, settings);
+          if (d != null) {
+            hasAnyOtherMove = true;
+            break outer;
+          }
+        }
+      }
+      if (hasAnyOtherMove) return null;
     }
   }
   return dest;
