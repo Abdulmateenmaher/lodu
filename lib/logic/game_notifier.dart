@@ -155,6 +155,8 @@ class GameNotifier extends ChangeNotifier {
       final d1 = Random().nextInt(6) + 1;
       final d2 = Random().nextInt(6) + 1;
 
+      bool prioritizePrison = (d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1));
+
       if (activeP.finished && !activeP.isHelper) {
         if (d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1)) {
           activeP.isHelper = true;
@@ -229,12 +231,12 @@ class GameNotifier extends ChangeNotifier {
       notifyListeners();
 
       Timer(const Duration(milliseconds: 140), () {
-        _checkAndAutoPlay(newPool, newPlayers, extra);
+        _checkAndAutoPlay(newPool, newPlayers, extra, prioritizePrison);
       });
     });
   }
 
-  void _checkAndAutoPlay(List<int> pool, List<Player> currentPlayers, bool currentCanRoll) {
+  void _checkAndAutoPlay(List<int> pool, List<Player> currentPlayers, bool currentCanRoll, bool prioritizePrison) {
     final snapSlot = turnSlot;
     final actId = snapSlot;
     final actPlayer = currentPlayers[actId];
@@ -267,8 +269,8 @@ class GameNotifier extends ChangeNotifier {
       if (allMoves.isNotEmpty) {
         // AI Intelligence
         allMoves.sort((a, b) {
-           int scoreA = _evaluateAiMove(a, currentPlayers, ctrlId);
-           int scoreB = _evaluateAiMove(b, currentPlayers, ctrlId);
+           int scoreA = _evaluateAiMove(a, currentPlayers, ctrlId, prioritizePrison);
+           int scoreB = _evaluateAiMove(b, currentPlayers, ctrlId, prioritizePrison);
            return scoreB.compareTo(scoreA); // Highest first
         });
         final best = allMoves.first;
@@ -308,31 +310,164 @@ class GameNotifier extends ChangeNotifier {
     }
   }
 
-  int _evaluateAiMove(AiMove move, List<Player> players, int myId) {
+
+  // ULTRA-IQ HUMAN-LIKE AI EVALUATION
+  int _evaluateAiMove(AiMove move, List<Player> players, int myId, bool prioritizePrison) {
     int score = move.dieValue * 10;
+    final targetPos = move.target.targetPos;
+    final targetState = move.target.targetState;
+    final currentPos = move.piece.pos;
+    final currentState = move.piece.state;
+
+    int piecesOut = players[myId].pieces.where((p) => p.state != PieceState.yard).length;
+    int prisoners = players[myId].pieces.where((p) => p.state == PieceState.prison).length;
+
+    // --- BOARD GEOMETRY & CHOKE POINT TRACKING ---
+    int startPos = myId * 13; // Standard 4-player 52-tile base offset calculation
+    int getDistFromStart(int pos) {
+      if (pos < 0) return -1;
+      int dist = (pos - startPos) % 52;
+      return dist < 0 ? dist + 52 : dist;
+    }
     
-    // Priority: Hit opponent piece
-    if (move.target.targetState == PieceState.board && 
-       !_effectiveSafeZones.contains(move.target.targetPos) && 
-       hasOpponent(move.target.targetPos, myId, players)) {
-       score += 2000;
+    int targetDist = getDistFromStart(targetPos);
+    int currentDist = getDistFromStart(currentPos);
+
+    // Identify the crucial "Second Safe Area" (The star square in the player's 1st quadrant)
+    bool isTargetSecondSafe = _effectiveSafeZones.contains(targetPos) && targetDist > 0 && targetDist <= 13;
+    bool isCurrentSecondSafe = _effectiveSafeZones.contains(currentPos) && currentDist > 0 && currentDist <= 13;
+
+    // 1. Hit Assessment
+    bool isHit = false;
+    if (targetState == PieceState.board && !_effectiveSafeZones.contains(targetPos)) {
+      isHit = hasOpponent(targetPos, myId, players);
     }
 
-    // Priority: Form a block border
-    if (move.target.targetState == PieceState.board) {
-      int sameColor = players[myId].pieces.where((p) => p.state == PieceState.board && p.pos == move.target.targetPos).length;
-      if (sameColor == 1) score += 1000;
+    // 2. Block Assessment
+    int sameColorAtTarget = 0;
+    if (targetState == PieceState.board || targetState == PieceState.homeStretch) {
+      sameColorAtTarget = players[myId].pieces.where((p) => p != move.piece && p.state == targetState && p.pos == targetPos).length;
+    }
+    bool formingBlock = sameColorAtTarget == 1; // Creates a 2-piece block
+
+    int sameColorAtCurrent = 0;
+    if (currentState == PieceState.board) {
+      sameColorAtCurrent = players[myId].pieces.where((p) => p != move.piece && p.state == PieceState.board && p.pos == currentPos).length;
+    }
+    // Leaving a block of 2, means 1 piece is left behind alone and unprotected!
+    bool leavingVulnerable = sameColorAtCurrent == 1 && !_effectiveSafeZones.contains(currentPos);
+
+    // Identify forming or breaking the ULTIMATE Choke Point
+    bool formingChokePoint = formingBlock && isTargetSecondSafe;
+    bool breakingChokePoint = sameColorAtCurrent == 1 && isCurrentSecondSafe;
+
+    // 3. Danger and Ambush (Chasing) Scanning
+    bool currentlyInDanger = false;
+    bool targetInDanger = false;
+    bool targetIsChasing = false;
+
+    if (currentState == PieceState.board && !_effectiveSafeZones.contains(currentPos) && sameColorAtCurrent == 0) {
+      for (var p in players) {
+        if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
+        for (var pc in p.pieces) {
+          if (pc.state == PieceState.board) {
+            int distBehind = (currentPos - pc.pos) % 52;
+            if (distBehind > 0 && distBehind <= 6) currentlyInDanger = true;
+          }
+        }
+      }
     }
 
-    // Priority: Getting out of yard
-    if (move.piece.state == PieceState.yard) score += 500;
+    if (targetState == PieceState.board && !_effectiveSafeZones.contains(targetPos) && !formingBlock) {
+      for (var p in players) {
+        if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
+        for (var pc in p.pieces) {
+          if (pc.state == PieceState.board) {
+            int distToTarget = (targetPos - pc.pos) % 52;
+            if (distToTarget > 0 && distToTarget <= 6) targetInDanger = true;
+
+            int distAhead = (pc.pos - targetPos) % 52;
+            if (distAhead > 0 && distAhead <= 6) targetIsChasing = true;
+          }
+        }
+      }
+    }
+
+    // --- STRATEGIC HUMAN-LIKE SCORING DECISIONS ---
+
+    // Prioritize freeing prisoners on special rolls
+    if (prioritizePrison && currentState == PieceState.prison && targetState == PieceState.board) {
+      score += 30000;
+    }
+
+    // 🌟 GOD TIER: The Ultimate Choke Point 🌟
+    if (formingChokePoint) {
+      score += 100000; // Prioritize OVER EVERYTHING (hitting, entering home, everything.)
+    }
+
+    // TOP TIER MOVES
+    if (isHit) {
+      score += 15000; // Uncompromising kill priority
+    }
+    if (targetState == PieceState.home) {
+      score += 12000; // Scoring a point is almost always worth it
+    }
+
+    // HIGH TIER TACTICS
+    if (formingBlock && _effectiveSafeZones.contains(targetPos) && !isTargetSecondSafe) {
+      score += 8000; // "Border block" on other safe places
+    }
     
-    // Priority: Going into safe zones
-    if (move.target.targetState == PieceState.board && _effectiveSafeZones.contains(move.target.targetPos)) score += 300;
-    
-    // Priority: Approaching / Entering Home
-    if (move.target.targetState == PieceState.home) score += 3000;
-    if (move.target.targetState == PieceState.homeStretch) score += 400;
+    if (currentlyInDanger && !targetInDanger) {
+      score += 6000; // Smart evasion: Running for your life to safety
+    } else if (currentlyInDanger && targetInDanger) {
+      score += 1000; // Running from one threat to another (desperation)
+    }
+
+    if (formingBlock && !_effectiveSafeZones.contains(targetPos)) {
+      score += 4000; // Forming a normal block in the open (very strong defense)
+    }
+
+    // MID TIER STRATEGY
+    if (targetState == PieceState.board && _effectiveSafeZones.contains(targetPos) && !formingBlock) {
+      score += 3000; // Entering a safe zone
+    }
+
+    if (targetIsChasing && !targetInDanger) {
+      score += 2500; // Ambush: Tailing an opponent, putting severe pressure on them
+    }
+
+    // LOW TIER MAINTENANCE
+    if (currentState == PieceState.yard) {
+      score += 2000;
+      // Prevent AI from crowding the board pointlessly if it already has an army out
+      if (piecesOut >= 3) score -= 1000;
+      if (prioritizePrison && prisoners > 0) score -= 10000;
+    }
+
+    if (targetState == PieceState.homeStretch) {
+      score += 1500; // Slowly moving up the protected alleyway
+    }
+
+    // --- SEVERE PENALTIES (AVOIDING STUPID MOVES) ---
+
+    // 🛑 SACRED DEFENSE: NEVER BREAK THE CHOKE POINT 🛑
+    if (breakingChokePoint) {
+      score -= 100000; // AI refuses to break the second safe area block unless literally forced to!
+    }
+
+    if (targetInDanger && !isHit && !formingBlock) {
+      score -= 4000; // AI refuses to commit suicide blindly into enemy fire
+    }
+
+    if (leavingVulnerable) {
+      score -= 5000; // AI refuses to break normal blocks if it leaves a piece defenseless
+    }
+
+    // Don't arbitrarily break up safe pieces when we have other moves
+    if (currentState == PieceState.board && _effectiveSafeZones.contains(currentPos) && sameColorAtCurrent > 0 && !isHit && !breakingChokePoint) {
+      score -= 2000;
+    }
 
     return score;
   }
@@ -493,7 +628,7 @@ class GameNotifier extends ChangeNotifier {
       Timer(const Duration(milliseconds: 210), () => _endTurn(newPlayers));
     } else {
       Timer(const Duration(milliseconds: 140), () {
-        _checkAndAutoPlay(newPool, newPlayers, rewardTurn);
+        _checkAndAutoPlay(newPool, newPlayers, rewardTurn, false);
       });
     }
   }
