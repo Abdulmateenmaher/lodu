@@ -157,7 +157,6 @@ class _RollingDieState extends State<_RollingDie>
     super.dispose();
   }
 
-  
 
   @override
   Widget build(BuildContext context) =>
