@@ -1,13 +1,14 @@
 {
-    "name": "lodu",
-    "short_name": "lodu",
+    "name": "Lodu - Board Game",
+    "short_name": "Lodu",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Enjoy the classic Ludo board game with sounds and visuals.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
+    "scope": ".",
     "icons": [
         {
             "src": "icons/Icon-192.png",

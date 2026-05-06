@@ -34,6 +34,6 @@ Write a commit message following the Conventional Commits standard:
 After confirmation of the message, run the following commands:
 - `git add .` (to stage all changes)
 - `git commit -m "[GENERATED_MESSAGE]"`
-- `git push origin main` (or the current head branch)
+- `git push origin HEAD:main (or the current head branch)
 
 Wait for confirmation before executing Step 4.

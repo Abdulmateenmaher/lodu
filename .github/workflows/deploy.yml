@@ -22,6 +22,10 @@ jobs:
     - name: Build web
       run: flutter build web --release --base-href /lodu/
 
+    - name: Modify service worker for offline support
+      run: |
+        sed -i '116a\      await contentCache.addAll(Object.keys(RESOURCES));' build/web/flutter_service_worker.js
+
     - name: Deploy to GitHub Pages
       if: github.ref == 'refs/heads/main'
       uses: peaceiris/actions-gh-pages@v3
