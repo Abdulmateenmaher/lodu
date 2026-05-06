@@ -5,6 +5,7 @@ import '../../logic/game_notifier.dart';
 import '../theme/space_theme.dart';
 import 'history_screen.dart';
 
+
 class EndScreen extends StatelessWidget {
   const EndScreen({super.key});
 

@@ -20,7 +20,7 @@ jobs:
       run: flutter pub get
 
     - name: Build web
-      run: flutter build web --release
+      run: flutter build web --release --base-href /lodu/
 
     - name: Deploy to GitHub Pages
       if: github.ref == 'refs/heads/main'
