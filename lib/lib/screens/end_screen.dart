@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../constants/board_constants.dart';
-
 import '../../logic/game_notifier.dart';
 import '../theme/space_theme.dart';
 import 'history_screen.dart';
