@@ -23,22 +23,36 @@ class EndScreen extends StatelessWidget {
             children: [
               const _BouncingTrophy(),
               const SizedBox(height: 20),
+              
+              if (last != null)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(3, (i) => Icon(
+                    Icons.star_rounded, 
+                    color: i < last.stars ? Colors.amber : Colors.grey.shade800,
+                    size: 40,
+                  )),
+                ),
+
+              const SizedBox(height: 10),
               const Text('Victory!',
                   style: TextStyle(color: Colors.white, fontSize: 44,
                       fontWeight: FontWeight.w900, letterSpacing: 2)),
               const SizedBox(height: 10),
-              if (winnerLabel.isNotEmpty)
+              
+              if (last?.statusText.isNotEmpty == true)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(winnerLabel,
+                  child: Text(last!.statusText,
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Color(0xFF4ade80),
-                          fontSize: 22, fontWeight: FontWeight.bold)),
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
-              const SizedBox(height: 8),
-              // Show winning team pieces
+              const SizedBox(height: 16),
+
               if (last != null) _WinnerPieces(record: last),
               const SizedBox(height: 36),
+              
               Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 12,
@@ -47,26 +61,19 @@ class EndScreen extends StatelessWidget {
                   ElevatedButton.icon(
                     onPressed: () => context.read<GameNotifier>().resetToSetup(),
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('New Match',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    label: const Text('New Match', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: const StadiumBorder(),
+                      backgroundColor: Colors.white, foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: const StadiumBorder(),
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const HistoryScreen())),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
                     icon: const Icon(Icons.history, size: 18),
-                    label: const Text('History',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    label: const Text('History', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1e293b),
-                      foregroundColor: const Color(0xFF94a3b8),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: const StadiumBorder(),
+                      backgroundColor: const Color(0xFF1e293b), foregroundColor: const Color(0xFF94a3b8),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: const StadiumBorder(),
                       side: const BorderSide(color: Color(0xFF334155)),
                     ),
                   ),
@@ -86,7 +93,6 @@ class _WinnerPieces extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Show colored dots for all 4 players
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(4, (i) {
@@ -107,34 +113,12 @@ class _WinnerPieces extends StatelessWidget {
 
 class _BouncingTrophy extends StatefulWidget {
   const _BouncingTrophy();
-  @override
-  State<_BouncingTrophy> createState() => _BouncingTrophyState();
+  @override State<_BouncingTrophy> createState() => _BouncingTrophyState();
 }
 
 class _BouncingTrophyState extends State<_BouncingTrophy> with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))
-      ..repeat(reverse: true);
-    _anim = Tween<double>(begin: 0, end: -16)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (_, __) => Transform.translate(
-        offset: Offset(0, _anim.value),
-        child: const Icon(Icons.emoji_events, color: Color(0xFFfacc15), size: 80),
-      ),
-    );
-  }
+  late AnimationController _ctrl; late Animation<double> _anim;
+  @override void initState() { super.initState(); _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700))..repeat(reverse: true); _anim = Tween<double>(begin: 0, end: -16).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut)); }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) { return AnimatedBuilder(animation: _anim, builder: (_, __) => Transform.translate(offset: Offset(0, _anim.value), child: const Icon(Icons.emoji_events, color: Color(0xFFfacc15), size: 80))); }
 }

@@ -20,9 +20,9 @@ class LudoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ludo Pro',
+      title: 'وطني چکه',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(fontFamily: 'sans-serif'),
+      theme: ThemeData(fontFamily: 'times'),
       home: const _RootRouter(),
     );
   }

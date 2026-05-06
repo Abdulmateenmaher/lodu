@@ -1,10 +1,11 @@
 class GameSettings {
-  final bool doubleSixBonus;      // rolling 6+6 or 1+1 gives extra roll
-  final bool killToEnter;         // must kill before entering home stretch
-  final bool safeZonesEnabled;    // safe zones protect pieces
-  final bool autoMoveUnambiguous; // auto-move when only 1 choice
-  final bool prisonRule;          // captured pieces go to prison (need 6 to escape)
-  final bool teamPlay;            // partners share win condition
+  final bool doubleSixBonus;      
+  final bool killToEnter;         
+  final bool safeZonesEnabled;    
+  final bool autoMoveUnambiguous; 
+  final bool prisonRule;          
+  final bool teamPlay;            
+  final int playerCount; // 2, 3, or 4 players
 
   const GameSettings({
     this.doubleSixBonus = true,
@@ -13,6 +14,7 @@ class GameSettings {
     this.autoMoveUnambiguous = true,
     this.prisonRule = true,
     this.teamPlay = true,
+    this.playerCount = 4,
   });
 
   GameSettings copyWith({
@@ -22,6 +24,7 @@ class GameSettings {
     bool? autoMoveUnambiguous,
     bool? prisonRule,
     bool? teamPlay,
+    int? playerCount,
   }) {
     return GameSettings(
       doubleSixBonus: doubleSixBonus ?? this.doubleSixBonus,
@@ -30,6 +33,7 @@ class GameSettings {
       autoMoveUnambiguous: autoMoveUnambiguous ?? this.autoMoveUnambiguous,
       prisonRule: prisonRule ?? this.prisonRule,
       teamPlay: teamPlay ?? this.teamPlay,
+      playerCount: playerCount ?? this.playerCount,
     );
   }
 }

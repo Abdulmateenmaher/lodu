@@ -44,6 +44,8 @@ class Player {
   bool hasKilled;
   bool finished;
   bool isHelper;
+  bool hasRolledFirstSix;
+  int timesHit;
   List<Piece> pieces;
 
   Player({
@@ -55,6 +57,8 @@ class Player {
     this.hasKilled = false,
     this.finished = false,
     this.isHelper = false,
+    this.hasRolledFirstSix = false,
+    this.timesHit = 0,
     required this.pieces,
   });
 }
