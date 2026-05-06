@@ -4,8 +4,14 @@ import 'logic/game_notifier.dart';
 import 'screens/setup_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/end_screen.dart';
+import 'services/audio_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize audio service for proper mobile audio support
+  await AudioService.initialize();
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => GameNotifier(),

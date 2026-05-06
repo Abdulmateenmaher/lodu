@@ -24,6 +24,7 @@ jobs:
 
     - name: Modify service worker for offline support
       run: |
+        # Ensure all resources including audio assets are cached for offline use
         sed -i '116a\      await contentCache.addAll(Object.keys(RESOURCES));' build/web/flutter_service_worker.js
 
     - name: Deploy to GitHub Pages
