@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 class AudioService {
   static final Map<String, AudioPlayer> _players = {};
   static bool _isInitialized = false;
+  static final Map<String, bool> _isPlaying = {}; // Track playing state per sound
 
   static const List<String> _soundFiles = [
     'start_game',
@@ -62,12 +63,20 @@ class AudioService {
       return;
     }
 
+    // Prevent overlapping play calls for the same sound
+    if (_isPlaying[soundName] == true) {
+      return; // Skip if already playing
+    }
+
     try {
-      // Stop any current playback and restart
+      _isPlaying[soundName] = true;
       await player.stop();
+      await player.seek(Duration.zero);
       await player.resume();
     } catch (e) {
       debugPrint('Audio play error for $soundName: $e');
+    } finally {
+      _isPlaying[soundName] = false;
     }
   }
 

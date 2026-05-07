@@ -99,7 +99,7 @@ class _BoardGrid extends StatelessWidget {
               opacity: isActive ? 1.0 : 0.4,
               child: Container(
                 decoration: BoxDecoration(color: kColors[colorId]!.main, border: Border.all(color: Colors.black)),
-                child: Center(child: Icon(Icons.star, size: cw * 0.55, color: Colors.white.withOpacity(0.4))),
+                child: Center(child: Icon(Icons.star, size: cw * 0.55, color: Colors.white.withValues(alpha: 0.4))),
               ),
             ),
           ),
@@ -118,8 +118,12 @@ class _YardCell extends StatelessWidget {
   const _YardCell({required this.playerId, required this.size, required this.game});
   @override Widget build(BuildContext context) {
     final color = kColors[playerId]!.main;
-    final showLock = game.players.isNotEmpty && !game.players[playerId].hasKilled && !game.players[playerId].isHelper && game.phase == GamePhase.play;
-    final showHelper = game.players.isNotEmpty && game.players[playerId].isHelper && game.phase == GamePhase.play;
+    final showLock = game.players.isNotEmpty && game.phase == GamePhase.play &&
+        (game.players[playerId].finished || (!game.players[playerId].hasKilled && !game.players[playerId].isHelper));
+    // Show partnership icon on both player and partner yards
+    final partnerId = (playerId + 2) % 4;
+    final showHelper = game.players.isNotEmpty && game.phase == GamePhase.play &&
+        (game.players[playerId].isHelper || game.players[partnerId].isHelper);
     final circleSize = size * 0.18; final innerSize = size * 0.667; final gap = (innerSize - circleSize * 2) / 3;
     return Container(decoration: BoxDecoration(color: color, border: Border.all(color: Colors.black)), child: Center(child: Container(width: innerSize, height: innerSize, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(size * 0.167), border: Border.all(color: Colors.grey.shade300), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]), child: Stack(children: [
       Positioned(left: gap, top: gap, child: _YardCircle(size: circleSize, color: color)),
@@ -139,9 +143,9 @@ class _PathCell extends StatelessWidget {
   final int index; final double cw; const _PathCell({required this.index, required this.cw});
   @override Widget build(BuildContext context) {
     Color bg = Colors.white; Widget? content;
-    if (kStartCells[0] == index) bg = kColors[0]!.main; else if (kStartCells[1] == index) bg = kColors[1]!.main; else if (kStartCells[2] == index) bg = kColors[2]!.main; else if (kStartCells[3] == index) bg = kColors[3]!.main;
-    if (index == 8) bg = kColors[1]!.main; if (index == 21) bg = kColors[2]!.main; if (index == 34) bg = kColors[3]!.main; if (index == 47) bg = kColors[0]!.main;
-    if (kSafeZones.contains(index)) content = Icon(Icons.star, size: cw * 0.65, color: bg == Colors.white ? Colors.black.withOpacity(0.2) : Colors.white.withOpacity(0.6));
+    if (kStartCells[0] == index) { bg = kColors[0]!.main; } else if (kStartCells[1] == index) { bg = kColors[1]!.main; } else if (kStartCells[2] == index) { bg = kColors[2]!.main; } else if (kStartCells[3] == index) { bg = kColors[3]!.main; }
+    if (index == 8) { bg = kColors[1]!.main; } if (index == 21) { bg = kColors[2]!.main; } if (index == 34) { bg = kColors[3]!.main; } if (index == 47) { bg = kColors[0]!.main; }
+    if (kSafeZones.contains(index)) { content = Icon(Icons.star, size: cw * 0.65, color: bg == Colors.white ? Colors.black.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.6)); }
     if (index == 11) { content = Icon(Icons.chevron_right, size: cw * 0.85, color: kColors[1]!.main); bg = Colors.white; } else if (index == 24) { content = Icon(Icons.expand_more, size: cw * 0.85, color: kColors[2]!.main); bg = Colors.white; } else if (index == 37) { content = Icon(Icons.chevron_left, size: cw * 0.85, color: kColors[3]!.main); bg = Colors.white; } else if (index == 50) { content = Icon(Icons.expand_less, size: cw * 0.85, color: kColors[0]!.main); bg = Colors.white; }
     return Container(decoration: BoxDecoration(color: bg, border: Border.all(color: Colors.black)), child: content != null ? Center(child: content) : null);
   }
@@ -191,7 +195,7 @@ class _PiecesLayer extends StatelessWidget {
         }
         final double pieceSize = cw * 1;
         final entry = AnimatedPositioned(key: ValueKey('${pc.color}-${pc.id}'), duration: const Duration(milliseconds: 220), curve: Curves.easeOut, left: cx + offsetX - pieceSize / 2, top: cy + offsetY - pieceSize / 2, width: pieceSize, height: pieceSize, child: PieceWidget(piece: pc, isSelectable: isSelectable, zIndex: isSelectable ? 40 : 20, onTap: () => game.handlePieceClick(pc)));
-        if (isSelectable) selectableElements.add(entry); else elements.add(entry);
+        if (isSelectable) { selectableElements.add(entry); } else { elements.add(entry); }
       }
     });
     elements.addAll(selectableElements); return elements;

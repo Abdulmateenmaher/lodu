@@ -269,8 +269,8 @@ class GameNotifier extends ChangeNotifier {
       if (allMoves.isNotEmpty) {
         // AI Intelligence
         allMoves.sort((a, b) {
-           int scoreA = _evaluateAiMove(a, currentPlayers, ctrlId, prioritizePrison);
-           int scoreB = _evaluateAiMove(b, currentPlayers, ctrlId, prioritizePrison);
+           int scoreA = _evaluateAiMove(a, currentPlayers, ctrlId, prioritizePrison, currentPool: pool);
+           int scoreB = _evaluateAiMove(b, currentPlayers, ctrlId, prioritizePrison, currentPool: pool);
            return scoreB.compareTo(scoreA); // Highest first
         });
         final best = allMoves.first;
@@ -312,7 +312,7 @@ class GameNotifier extends ChangeNotifier {
 
 
   // ULTRA-IQ HUMAN-LIKE AI EVALUATION
-  int _evaluateAiMove(AiMove move, List<Player> players, int myId, bool prioritizePrison) {
+  int _evaluateAiMove(AiMove move, List<Player> players, int myId, bool prioritizePrison, {List<int> currentPool = const []}) {
     int score = move.dieValue * 10;
     final targetPos = move.target.targetPos;
     final targetState = move.target.targetState;
@@ -323,19 +323,17 @@ class GameNotifier extends ChangeNotifier {
     int prisoners = players[myId].pieces.where((p) => p.state == PieceState.prison).length;
 
     // --- BOARD GEOMETRY & CHOKE POINT TRACKING ---
-    int startPos = myId * 13; // Standard 4-player 52-tile base offset calculation
-    int getDistFromStart(int pos) {
-      if (pos < 0) return -1;
-      int dist = (pos - startPos) % 52;
-      return dist < 0 ? dist + 52 : dist;
-    }
-    
-    int targetDist = getDistFromStart(targetPos);
-    int currentDist = getDistFromStart(currentPos);
+    // Each player has two own-colored stops: [startCell, secondStop].
+    // The SECOND STOP is the prime "border block" choke point — a colored safe square
+    // located exactly 3 tiles before the home-stretch entry (Red=47, Green=8, Yellow=21, Blue=34).
+    // A 2-piece block here is nearly unpassable for all opponents and must be preserved at all costs.
+    final mySecondStop = kMyStops[myId]![1];
+    bool isTargetSecondSafe = targetPos == mySecondStop;   // Moving TO own border-block choke point
+    bool isCurrentSecondSafe = currentPos == mySecondStop; // Piece currently AT own border-block choke point
 
-    // Identify the crucial "Second Safe Area" (The star square in the player's 1st quadrant)
-    bool isTargetSecondSafe = _effectiveSafeZones.contains(targetPos) && targetDist > 0 && targetDist <= 13;
-    bool isCurrentSecondSafe = _effectiveSafeZones.contains(currentPos) && currentDist > 0 && currentDist <= 13;
+    final myFirstStop = kMyStops[myId]![0];
+    bool isTargetFirstSafe = targetPos == myFirstStop;
+    bool isCurrentFirstSafe = currentPos == myFirstStop;
 
     // 1. Hit Assessment
     bool isHit = false;
@@ -360,6 +358,29 @@ class GameNotifier extends ChangeNotifier {
     // Identify forming or breaking the ULTIMATE Choke Point
     bool formingChokePoint = formingBlock && isTargetSecondSafe;
     bool breakingChokePoint = sameColorAtCurrent == 1 && isCurrentSecondSafe;
+
+    // Check if piece is behind second stop and will pass it without landing
+    int distToSecondStop = (mySecondStop - currentPos) % 52;
+    bool isBehindSecondStop = distToSecondStop > 0 && distToSecondStop <= 6;
+    bool willPassSecondStop = isBehindSecondStop && distToSecondStop < move.dieValue && targetState == PieceState.board;
+
+    // Check if piece is past second stop (between second stop and home stretch entry, or in home stretch)
+    bool isPastSecondStop = false;
+    if (currentState == PieceState.homeStretch) {
+      isPastSecondStop = true; // In home stretch, definitely passed second stop
+    } else if (currentState == PieceState.board) {
+      int distFromSecondStop = (currentPos - mySecondStop) % 52;
+      // Second stop is 3 cells before home stretch entry
+      if (distFromSecondStop > 0 && distFromSecondStop <= 3) {
+        isPastSecondStop = true;
+      }
+    }
+
+    // Count pieces at second stop for block assessment
+    int piecesAtSecondStop = players[myId].pieces.where((p) => p.state == PieceState.board && p.pos == mySecondStop).length;
+
+    // Count pieces at first stop for block assessment
+    int piecesAtFirstStop = players[myId].pieces.where((p) => p.state == PieceState.board && p.pos == myFirstStop).length;
 
     // 3. Danger and Ambush (Chasing) Scanning
     bool currentlyInDanger = false;
@@ -395,27 +416,71 @@ class GameNotifier extends ChangeNotifier {
 
     // --- STRATEGIC HUMAN-LIKE SCORING DECISIONS ---
 
+    // Penalty for passing second stop without landing on it
+    if (willPassSecondStop) {
+      score -= 100000; // Extremely high penalty - NEVER pass second stop without landing
+    }
+
     // Prioritize freeing prisoners on special rolls
     if (prioritizePrison && currentState == PieceState.prison && targetState == PieceState.board) {
       score += 30000;
     }
 
+    // High priority: Release prisoners when only one piece on board and dice is 6
+    int piecesOnBoard = players[myId].pieces.where((p) => p.state == PieceState.board || p.state == PieceState.homeStretch).length;
+    if (piecesOnBoard <= 1 && prisoners > 0 && move.dieValue == 6) {
+      if (currentState == PieceState.prison && targetState == PieceState.board) {
+        score += 50000; // Highest priority - free prisoners when vulnerable
+      }
+    }
+
+    // Extra priority for getting pieces out of prison/yard when rolling 6s
+    if (move.dieValue == 6) {
+      if (currentState == PieceState.prison && targetState == PieceState.board) {
+        score += 40000; // High priority to free prisoners on 6
+      }
+      if (currentState == PieceState.yard && targetState == PieceState.board) {
+        score += 35000; // High priority to get pieces out on 6
+      }
+    }
+
     // 🌟 GOD TIER: The Ultimate Choke Point 🌟
     if (formingChokePoint) {
-      score += 100000; // Prioritize OVER EVERYTHING (hitting, entering home, everything.)
+      score += 200000; // Absolute highest priority - over everything including hits and other safe zones
     }
 
     // TOP TIER MOVES
     if (isHit) {
-      score += 15000; // Uncompromising kill priority
+      score += 60000; // Higher than first border penalty (50000) - prioritize hitting over staying on first border
+      
+      // Bonus: remaining dice might lead to another hit
+      if (currentPool.isNotEmpty) {
+        int remainingDiceSum = currentPool.where((d) => d != move.dieValue).fold(0, (sum, d) => sum + d);
+        if (remainingDiceSum > 0 && targetState == PieceState.board) {
+          // Check if remaining dice can reach another opponent from target position
+          for (var p in players) {
+            if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
+            for (var pc in p.pieces) {
+              if (pc.state == PieceState.board) {
+                int distToOpponent = (pc.pos - targetPos) % 52;
+                if (distToOpponent > 0 && distToOpponent <= remainingDiceSum) {
+                  score += 10000; // Bonus for setting up multi-dice hit
+                }
+              }
+            }
+          }
+        }
+      }
     }
     if (targetState == PieceState.home) {
-      score += 12000; // Scoring a point is almost always worth it
+      // Entering home is highly valuable, but NEVER worth breaking the border-block choke point.
+      // When breakingChokePoint is also true the net score stays deeply negative (-88000).
+      score += 12000;
     }
 
     // HIGH TIER TACTICS
-    if (formingBlock && _effectiveSafeZones.contains(targetPos) && !isTargetSecondSafe) {
-      score += 8000; // "Border block" on other safe places
+    if (formingBlock && _isOwnColoredSafe(myId, targetPos) && !isTargetFirstSafe && !isTargetSecondSafe) {
+      score += 15000; // Common stops only - higher priority than white cell and start/second border
     }
     
     if (currentlyInDanger && !targetInDanger) {
@@ -424,9 +489,7 @@ class GameNotifier extends ChangeNotifier {
       score += 1000; // Running from one threat to another (desperation)
     }
 
-    if (formingBlock && !_effectiveSafeZones.contains(targetPos)) {
-      score += 4000; // Forming a normal block in the open (very strong defense)
-    }
+
 
     // MID TIER STRATEGY
     if (targetState == PieceState.board && _effectiveSafeZones.contains(targetPos) && !formingBlock) {
@@ -451,9 +514,32 @@ class GameNotifier extends ChangeNotifier {
 
     // --- SEVERE PENALTIES (AVOIDING STUPID MOVES) ---
 
-    // 🛑 SACRED DEFENSE: NEVER BREAK THE CHOKE POINT 🛑
+    // 🛑 SACRED DEFENSE: NEVER BREAK THE BORDER-BLOCK CHOKE POINT 🛑
+    // Moving away from own second stop while a partner piece still guards it destroys the
+    // impassable 2-piece block — far worse than skipping a home entry or a kill opportunity.
+    // Net vs home entry: -100000 + 12000 = -88000 → AI will NOT advance to home through here.
     if (breakingChokePoint) {
-      score -= 100000; // AI refuses to break the second safe area block unless literally forced to!
+      score -= 100000;
+    }
+
+    // PENALTY: Extremely reluctant to move ANY piece from second stop (border block position)
+    // If 2+ pieces already blocking, reduce penalty since extra pieces aren't needed for block
+    if (isCurrentSecondSafe) {
+      if (piecesAtSecondStop >= 2) {
+        score -= 30000; // Reduced penalty - 2+ pieces already blocking
+      } else {
+        score -= 150000; // Full penalty - need to preserve the block
+      }
+    }
+
+    // PENALTY: Reluctant to move pieces from first stop (start cell)
+    // If 2+ pieces already there, reduce penalty since block is formed
+    if (isCurrentFirstSafe) {
+      if (piecesAtFirstStop >= 2) {
+        score -= 10000; // Reduced penalty - 2+ pieces already blocking
+      } else {
+        score -= 50000; // Full penalty - preserve pieces at first stop
+      }
     }
 
     if (targetInDanger && !isHit && !formingBlock) {
@@ -465,14 +551,25 @@ class GameNotifier extends ChangeNotifier {
     }
 
     // Don't arbitrarily break up safe pieces when we have other moves
-    if (currentState == PieceState.board && _effectiveSafeZones.contains(currentPos) && sameColorAtCurrent > 0 && !isHit && !breakingChokePoint) {
+    // (Exclude first/second stops as they have their own specific penalties)
+    if (currentState == PieceState.board && _isOwnColoredSafe(myId, currentPos) && sameColorAtCurrent > 0 && !isHit && !breakingChokePoint && !isCurrentFirstSafe && !isCurrentSecondSafe) {
       score -= 2000;
+    }
+
+    // 50% priority reduction for pieces past second stop until they enter home
+    // Unless no other moves available, pieces past second stop should not be moved
+    if (isPastSecondStop && targetState != PieceState.home) {
+      score = (score * 0.5).toInt(); // 50% reduction as requested
     }
 
     return score;
   }
 
   List<int> get _effectiveSafeZones => settings.safeZonesEnabled ? kSafeZones : [];
+
+  bool _isOwnColoredSafe(int playerId, int pos) {
+    return kMyStops.containsKey(playerId) && kMyStops[playerId]!.contains(pos);
+  }
 
   String _nameOf(Player p) => p.name.isNotEmpty ? p.name : (p.isAI ? 'Bot ${kColors[p.id]!.name}' : kColors[p.id]!.name);
 
@@ -614,7 +711,7 @@ class GameNotifier extends ChangeNotifier {
     }
 
     if (justFinished) {
-      // Cannot help partner in this same turn series.
+      // Player finished, end turn normally. Partner will play in their own turn series.
       dicePool = [];
       canRoll = false;
       notifyListeners();
