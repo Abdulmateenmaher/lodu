@@ -36,6 +36,30 @@
 
   <title>lodu</title>
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0175C2">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- Custom Service Worker Registration -->
+  <script>
+    // Register service worker early for proper offline support
+    if ('serviceWorker' in navigator) {
+      // Attempt to register immediately (but still wait for load)
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(function(registration) {
+            console.log('Service Worker registered with scope:', registration.scope);
+            // Force activation to take control immediately
+            if (registration.waiting) {
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+          })
+          .catch(function(error) {
+            console.log('Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
