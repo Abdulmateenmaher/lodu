@@ -3,12 +3,14 @@
     "short_name": "Lodu",
     "start_url": ".",
     "display": "standalone",
+    "display_override": ["standalone", "minimal-ui"],
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
     "description": "Enjoy the classic Ludo board game with sounds and visuals.",
     "orientation": "portrait-primary",
-    "prefer_related_applications": false,
     "scope": ".",
+    "prefer_related_applications": false,
+    "related_applications": [],
     "icons": [
         {
             "src": "icons/Icon-192.png",
