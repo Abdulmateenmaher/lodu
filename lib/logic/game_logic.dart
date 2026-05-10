@@ -222,12 +222,12 @@ MoveDestination? calculateDestination(
 class AiMove {
   final Piece piece;
   final MoveDestination target;
-  final int dieIndex;
+  final List<int> dieIndices;
   final int dieValue;
   AiMove({
     required this.piece,
     required this.target,
-    required this.dieIndex,
+    required this.dieIndices,
     required this.dieValue,
   });
 }
@@ -239,6 +239,7 @@ List<AiMove> getAllValidMoves(
   GameSettings settings,
 ) {
   final List<AiMove> moves = [];
+  // Single die moves
   for (int i = 0; i < pool.length; i++) {
     for (final pc in player.pieces) {
       if (pc.state == PieceState.home || pc.hasKilledThisTurn) continue;
@@ -253,8 +254,33 @@ List<AiMove> getAllValidMoves(
       );
       if (dest != null) {
         moves.add(
-          AiMove(piece: pc, target: dest, dieIndex: i, dieValue: pool[i]),
+          AiMove(piece: pc, target: dest, dieIndices: [i], dieValue: pool[i]),
         );
+      }
+    }
+  }
+  // Combined moves for pairs only if no single moves
+  if (moves.isEmpty && pool.length >= 2) {
+    for (int i = 0; i < pool.length; i++) {
+      for (int j = i + 1; j < pool.length; j++) {
+        int sum = pool[i] + pool[j];
+        for (final pc in player.pieces) {
+          if (pc.state == PieceState.home || pc.hasKilledThisTurn) continue;
+          final dest = calculateDestination(
+            player,
+            pc,
+            sum,
+            players,
+            pool: [], // no blocking for combined
+            dieIndex: -1,
+            settings: settings,
+          );
+          if (dest != null) {
+            moves.add(
+              AiMove(piece: pc, target: dest, dieIndices: [i, j], dieValue: sum),
+            );
+          }
+        }
       }
     }
   }

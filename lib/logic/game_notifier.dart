@@ -268,16 +268,16 @@ class GameNotifier extends ChangeNotifier {
 
       if (allMoves.isNotEmpty) {
         // AI Intelligence
-        allMoves.sort((a, b) {
-           int scoreA = _evaluateAiMove(a, currentPlayers, ctrlId, prioritizePrison, currentPool: pool);
-           int scoreB = _evaluateAiMove(b, currentPlayers, ctrlId, prioritizePrison, currentPool: pool);
-           return scoreB.compareTo(scoreA); // Highest first
-        });
+         allMoves.sort((a, b) {
+            int scoreA = _evaluateAiMove(a, currentPlayers, ctrlId, prioritizePrison, currentPool: pool, dieIndices: a.dieIndices);
+            int scoreB = _evaluateAiMove(b, currentPlayers, ctrlId, prioritizePrison, currentPool: pool, dieIndices: b.dieIndices);
+            return scoreB.compareTo(scoreA); // Highest first
+         });
         final best = allMoves.first;
         Timer(const Duration(milliseconds: 500), () {
           if (turnSlot != snapSlot) return;
           _aiTurnActive = false;
-          _executeMove(best.piece, best.target, best.dieIndex, currentPlayers, pool, currentCanRoll);
+          _executeMove(best.piece, best.target, best.dieIndices, currentPlayers, pool, currentCanRoll);
         });
       } else {
         Timer(const Duration(milliseconds: 420), () {
@@ -305,14 +305,19 @@ class GameNotifier extends ChangeNotifier {
 
     if (pool.length == 1 && allMoves.length == 1 && !currentCanRoll) {
       final only = allMoves.first;
-      Timer(const Duration(milliseconds: 420), () => _executeMove(only.piece, only.target, only.dieIndex, currentPlayers, pool, currentCanRoll));
+      Timer(const Duration(milliseconds: 420), () => _executeMove(only.piece, only.target, only.dieIndices, currentPlayers, pool, currentCanRoll));
       return;
     }
   }
 
 
   // ULTRA-IQ HUMAN-LIKE AI EVALUATION
-  int _evaluateAiMove(AiMove move, List<Player> players, int myId, bool prioritizePrison, {List<int> currentPool = const []}) {
+  int _evaluateAiMove(AiMove move, List<Player> players, int myId, bool prioritizePrison, {List<int> currentPool = const [], List<int> dieIndices = const []}) {
+      List<int> remainingDice = [];
+    for (int k = 0; k < currentPool.length; k++) {
+      if (!dieIndices.contains(k)) remainingDice.add(currentPool[k]);
+    }
+
     int score = move.dieValue * 10;
     final targetPos = move.target.targetPos;
     final targetState = move.target.targetState;
@@ -454,8 +459,8 @@ class GameNotifier extends ChangeNotifier {
       score += 60000; // Higher than first border penalty (50000) - prioritize hitting over staying on first border
       
       // Bonus: remaining dice might lead to another hit
-      if (currentPool.isNotEmpty) {
-        int remainingDiceSum = currentPool.where((d) => d != move.dieValue).fold(0, (sum, d) => sum + d);
+      if (remainingDice.isNotEmpty) {
+        int remainingDiceSum = remainingDice.fold(0, (sum, d) => sum + d);
         if (remainingDiceSum > 0 && targetState == PieceState.board) {
           // Check if remaining dice can reach another opponent from target position
           for (var p in players) {
@@ -481,6 +486,11 @@ class GameNotifier extends ChangeNotifier {
     // HIGH TIER TACTICS
     if (formingBlock && _isOwnColoredSafe(myId, targetPos) && !isTargetFirstSafe && !isTargetSecondSafe) {
       score += 15000; // Common stops only - higher priority than white cell and start/second border
+    }
+
+    // PENALTY: Avoid stacking two pieces on blank squares
+    if (formingBlock && !_isOwnColoredSafe(myId, targetPos)) {
+      score -= 20000; // Strongly discourage stacking on non-safe squares
     }
     
     if (currentlyInDanger && !targetInDanger) {
@@ -536,9 +546,9 @@ class GameNotifier extends ChangeNotifier {
     // If 2+ pieces already there, reduce penalty since block is formed
     if (isCurrentFirstSafe) {
       if (piecesAtFirstStop >= 2) {
-        score -= 10000; // Reduced penalty - 2+ pieces already blocking
+        score -= 5000; // Reduced penalty - 2+ pieces already blocking
       } else {
-        score -= 50000; // Full penalty - preserve pieces at first stop
+        score -= 20000; // Reduced penalty to prioritize moving from first stop
       }
     }
 
@@ -583,18 +593,33 @@ class GameNotifier extends ChangeNotifier {
     final actId = activePlayerId;
     final ctrlId = getControlPlayerId(players);
     if (piece.color != ctrlId || isRolling || players[actId].isAI) return;
-    if (selectedDieIndex == null || piece.hasKilledThisTurn) return;
+    if (selectedDieIndex == null && dicePool.length != 2) return;
+    if (selectedDieIndex != null && piece.hasKilledThisTurn) return;
 
     final pCtrl = players[ctrlId];
-    final moveVal = dicePool[selectedDieIndex!];
-    final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: dicePool, dieIndex: selectedDieIndex!, settings: settings);
-    
-    if (dest != null) {
-      _executeMove(piece, dest, selectedDieIndex!, players, dicePool, canRoll);
+    List<int> selectedIndices = selectedDieIndex != null ? [selectedDieIndex!] : [];
+    int moveVal;
+
+    if (selectedIndices.isNotEmpty) {
+      moveVal = dicePool[selectedIndices[0]];
+      final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: dicePool, dieIndex: selectedIndices[0], settings: settings);
+      if (dest != null) {
+        _executeMove(piece, dest, selectedIndices, players, dicePool, canRoll);
+        return;
+      }
+    } else if (dicePool.length == 2) {
+      // Try combined
+      selectedIndices = [0, 1];
+      moveVal = dicePool[0] + dicePool[1];
+      final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: [], dieIndex: -1, settings: settings);
+      if (dest != null) {
+        _executeMove(piece, dest, selectedIndices, players, dicePool, canRoll);
+        return;
+      }
     }
   }
 
-  void _executeMove(Piece piece, MoveDestination target, int dieIndexUsed, List<Player> currentPlayers, List<int> currentPool, bool currentCanRoll) {
+  void _executeMove(Piece piece, MoveDestination target, List<int> dieIndicesUsed, List<Player> currentPlayers, List<int> currentPool, bool currentCanRoll) {
     AudioService.play('moving_piece');
     final newPlayers = _deepCopyPlayers(currentPlayers);
     final ctrlId = getControlPlayerId(currentPlayers);
@@ -610,7 +635,10 @@ class GameNotifier extends ChangeNotifier {
       rewardTurn = true;
     }
 
-    final newPool = List<int>.from(currentPool)..removeAt(dieIndexUsed);
+    final newPool = List<int>.from(currentPool);
+    for (int idx in dieIndicesUsed.reversed) {
+      newPool.removeAt(idx);
+    }
 
     // Form block check for audio
     if (target.targetState == PieceState.board) {
