@@ -23,7 +23,10 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _settings = context.read<GameNotifier>().settings;
-    _playerCount = _settings.playerCount;
+    _playerCount = 4; // Fixed to 4 players
+    for (int i = 0; i < 4; i++) {
+      _nameCtrl[i].text = kColors[i]!.name + '...';
+    }
     _logoCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))..repeat(reverse: true);
     _logoAnim = Tween<double>(begin: -2, end: 2).animate(CurvedAnimation(parent: _logoCtrl, curve: Curves.easeInOut));
   }
@@ -46,9 +49,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
   }
 
   List<int> _getVisiblePlayers() {
-    if (_playerCount == 2) return [1, 3]; // Green, Blue
-    if (_playerCount == 3) return [0, 1, 3]; // Red, Green, Blue
-    return [0, 1, 2, 3]; // All
+    return [0, 1, 2, 3]; // All players
   }
 
   @override
@@ -71,47 +72,31 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                         alignment: Alignment.center,
                         children: [
                           _buildLogo(),
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                GestureDetector(
-                                  onTap: _openSettings,
-                                  child: Container(
-                                    width: 40, height: 40,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF111827),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: const Color(0xFF1f2937)),
-                                    ),
-                                    child: const Icon(Icons.tune_rounded, color: Color(0xFF60a5fa), size: 20),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                GestureDetector(
-                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
-                                  child: Container(
-                                    width: 40, height: 40,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF111827),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: const Color(0xFF1f2937)),
-                                    ),
-                                    child: const Icon(Icons.history, color: Color(0xFF94a3b8), size: 20),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                           Positioned(
+                             left: 0,
+                             top: 0,
+                             child: GestureDetector(
+                               onTap: _openSettings,
+                               child: Container(
+                                 width: 40, height: 40,
+                                 decoration: BoxDecoration(
+                                   color: const Color(0xFF111827),
+                                   borderRadius: BorderRadius.circular(10),
+                                   border: Border.all(color: const Color(0xFF1f2937)),
+                                 ),
+                                 child: const Icon(Icons.tune_rounded, color: Color(0xFF60a5fa), size: 20),
+                               ),
+                             ),
+                           ),
                         ],
                       ),
                       const SizedBox(height: 28),
                       _buildPlayersCard(),
-                      const SizedBox(height: 24),
-                      _buildStartButton(),
-                      const SizedBox(height: 24),
+                       const SizedBox(height: 24),
+                       _buildStartButton(),
+                       const SizedBox(height: 16),
+                       _buildHistoryButton(),
+                       const SizedBox(height: 24),
                     ],
                   ),
                 ),
@@ -158,35 +143,25 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: [
-              const Icon(Icons.people, color: Color(0xFF60a5fa), size: 16),
-              const SizedBox(width: 8),
-              const Text('PLAYERS', style: TextStyle(color: Color(0xFF94a3b8), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-              const Spacer(),
-              DropdownButton<int>(
-                value: _playerCount,
-                dropdownColor: const Color(0xFF111827),
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                underline: const SizedBox(),
-                icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF60a5fa), size: 16),
-                items: [2, 3, 4].map((e) => DropdownMenuItem(value: e, child: Text('$e Players'))).toList(),
-                onChanged: (v) => setState(() {
-                  _playerCount = v!;
-                  _settings = _settings.copyWith(playerCount: _playerCount);
-                }),
-              ),
-            ],
-          ),
+             children: [
+               const Icon(Icons.people, color: Color(0xFF60a5fa), size: 16),
+               const SizedBox(width: 8),
+               const Text('PLAYERS', style: TextStyle(color: Color(0xFF94a3b8), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+             ],
+           ),
           const SizedBox(height: 16),
-          ...visibleIndexes.map((i) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _PlayerRow(
-              index: i,
-              isAI: _isAI[i],
-              nameCtrl: _nameCtrl[i],
-              onTypeChanged: (v) => setState(() => _isAI[i] = v),
-            ),
-          )),
+           ...visibleIndexes.map((i) => Padding(
+             padding: const EdgeInsets.only(bottom: 12),
+             child: _PlayerRow(
+               index: i,
+               isAI: _isAI[i],
+               nameCtrl: _nameCtrl[i],
+               onTypeChanged: (v) => setState(() {
+                 _isAI[i] = v;
+                 _nameCtrl[i].text = v ? 'Bot ${kColors[i]!.name}...' : kColors[i]!.name + '...';
+               }),
+             ),
+           )),
         ],
       ),
     );
@@ -217,6 +192,23 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
       ),
     );
   }
+
+  Widget _buildHistoryButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
+        icon: const Icon(Icons.history, size: 20),
+        label: const Text('View History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF94a3b8),
+          side: const BorderSide(color: Color(0xFF1f2937)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
 }
 
 // _PlayerRow, _SegmentedToggle, _SettingsDialog, and _GridPainter remain exactly similar as previous, but included for completeness:
@@ -240,21 +232,19 @@ class _PlayerRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 26, height: 26,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 6)]),
-          ),
+           Icon(Icons.lens, color: color, size: 26),
           const SizedBox(width: 10),
           Expanded(
-            child: TextField(
-              controller: nameCtrl,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: isAI ? 'Bot ${kColors[index]!.name}' : kColors[index]!.name,
-                hintStyle: TextStyle(color: color.withValues(alpha: 0.5), fontSize: 13),
-                isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
-              ),
-            ),
+             child: TextField(
+               controller: nameCtrl,
+               style: const TextStyle(color: Colors.white, fontSize: 14),
+               decoration: InputDecoration(
+                 suffixIcon: Icon(Icons.edit, color: color.withValues(alpha: 0.5), size: 16),
+                 isDense: true,
+                 border: InputBorder.none,
+                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+               ),
+             ),
           ),
           _SegmentedToggle(options: const ['Human', 'AI'], selected: isAI ? 1 : 0, color: color, onChanged: (i) => onTypeChanged(i == 1)),
         ],
@@ -281,14 +271,23 @@ class _SegmentedToggleState extends State<_SegmentedToggle> with SingleTickerPro
         final newSelected = local.dx > box.size.width / 2 ? 1 : 0;
         if (newSelected != widget.selected) widget.onChanged(newSelected);
       },
-      child: Container(
-        width: 70, height: 32,
-        decoration: BoxDecoration(color: const Color(0xFF0f172a), borderRadius: BorderRadius.circular(16), border: Border.all(color: widget.color.withValues(alpha: 0.5))),
-        child: Stack(
-          children: [
-            AnimatedBuilder(animation: _anim, builder: (c, child) => Positioned(left: 2 + _anim.value * (66 - 34), top: 2, child: Container(width: 34, height: 28, decoration: BoxDecoration(color: widget.color, borderRadius: BorderRadius.circular(14))))),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: List.generate(widget.options.length, (i) => AnimatedBuilder(animation: _anim, builder: (c, child) { final isSelected = (i == 0 && _anim.value < 0.5) || (i == 1 && _anim.value >= 0.5); return SizedBox(width: 34, child: Center(child: Text(widget.options[i], style: TextStyle(color: isSelected ? Colors.white : const Color(0xFF64748b), fontSize: 9, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)))); }))),
-          ],
+      child: GestureDetector(
+        onTap: () => widget.onChanged(widget.selected == 0 ? 1 : 0),
+        onHorizontalDragUpdate: (details) {
+          final box = context.findRenderObject() as RenderBox;
+          final local = box.globalToLocal(details.globalPosition);
+          final newSelected = local.dx > box.size.width / 2 ? 1 : 0;
+          if (newSelected != widget.selected) widget.onChanged(newSelected);
+        },
+        child: Container(
+          width: 80, height: 32,
+          decoration: BoxDecoration(color: const Color(0xFF0f172a), borderRadius: BorderRadius.circular(16), border: Border.all(color: widget.color.withValues(alpha: 0.5))),
+          child: Stack(
+            children: [
+              AnimatedBuilder(animation: _anim, builder: (c, child) => Positioned(left: 2 + _anim.value * (76 - 34), top: 2, child: Container(width: 34, height: 28, decoration: BoxDecoration(color: widget.color, borderRadius: BorderRadius.circular(14))))),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: List.generate(widget.options.length, (i) => AnimatedBuilder(animation: _anim, builder: (c, child) { final isSelected = (i == 0 && _anim.value < 0.5) || (i == 1 && _anim.value >= 0.5); return SizedBox(width: 38, child: Center(child: Icon(i == 0 ? Icons.person : Icons.computer, color: isSelected ? Colors.white : const Color(0xFF64748b), size: 24))); }))),
+            ],
+          ),
         ),
       ),
     );

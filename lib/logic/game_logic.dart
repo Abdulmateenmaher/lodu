@@ -53,11 +53,12 @@ MoveDestination? calculateDestSimple(
   int moveVal,
   List<Player> players,
   GameSettings settings,
+  List<int> pool,
 ) {
   final safeZones = effectiveSafeZones(settings);
 
   if (piece.state == PieceState.yard) {
-    if (moveVal == 6) {
+    if (moveVal == 6 && pool.isNotEmpty) {
       return MoveDestination(
         valid: true,
         targetState: PieceState.board,
@@ -68,7 +69,7 @@ MoveDestination? calculateDestSimple(
   }
   if (piece.state == PieceState.prison) {
     if (!settings.prisonRule) return null;
-    if (moveVal == 6) {
+    if (moveVal == 6 && pool.isNotEmpty) {
       return MoveDestination(
         valid: true,
         targetState: PieceState.yard,
@@ -169,7 +170,7 @@ MoveDestination? calculateDestination(
   int dieIndex = -1,
   GameSettings settings = const GameSettings(),
 }) {
-  final dest = calculateDestSimple(player, piece, moveVal, players, settings);
+  final dest = calculateDestSimple(player, piece, moveVal, players, settings, pool);
   if (dest == null) return null;
 
   final safeZones = effectiveSafeZones(settings);
@@ -184,7 +185,7 @@ MoveDestination? calculateDestination(
         for (final p in player.pieces) {
           if (p.id == piece.id) continue;
           if (p.state == PieceState.home || p.hasKilledThisTurn) continue;
-          final d = calculateDestSimple(player, p, rVal, players, settings);
+          final d = calculateDestSimple(player, p, rVal, players, settings, remainingPool);
           if (d != null) {
             hasAnyOtherMove = true;
             break outer;
@@ -206,7 +207,7 @@ MoveDestination? calculateDestination(
         for (final p in player.pieces) {
           if (p.id == piece.id) continue;
           if (p.state == PieceState.home || p.hasKilledThisTurn) continue;
-          final d = calculateDestSimple(player, p, rVal, players, settings);
+          final d = calculateDestSimple(player, p, rVal, players, settings, remainingPool);
           if (d != null) {
             hasAnyOtherMove = true;
             break outer;

@@ -38,16 +38,7 @@ class EndScreen extends StatelessWidget {
               const Text('Victory!',
                   style: TextStyle(color: Colors.white, fontSize: 44,
                       fontWeight: FontWeight.w900, letterSpacing: 2)),
-              const SizedBox(height: 10),
-              
-              if (last?.statusText.isNotEmpty == true)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(last!.statusText,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFF4ade80),
-                          fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
+               const SizedBox(height: 10),
               const SizedBox(height: 16),
 
               if (last != null) _WinnerPieces(record: last),

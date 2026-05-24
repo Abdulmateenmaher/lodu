@@ -155,12 +155,39 @@ class GameNotifier extends ChangeNotifier {
       final d1 = Random().nextInt(6) + 1;
       final d2 = Random().nextInt(6) + 1;
 
+      final allHome = activeP.pieces.every((pc) => pc.state == PieceState.home);
+      if (allHome && !activeP.finished) {
+        bool winningRoll = d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1) || (d1 == 6 && d2 == 6);
+        if (winningRoll) {
+          activeP.finished = true;
+          // Immediately become a helper if in team play!
+          if (settings.teamPlay) {
+            activeP.isHelper = true;
+          }
+          isRolling = false;
+          players = newPlayers;
+          notifyListeners();
+          if (_checkGameOver(newPlayers)) return;
+          Timer(const Duration(milliseconds: 700), () => _endTurn(newPlayers));
+          return;
+        } else {
+          isRolling = false;
+          players = newPlayers;
+          notifyListeners();
+          Timer(const Duration(milliseconds: 700), () => _endTurn(newPlayers));
+          return;
+        }
+      }
+
       bool prioritizePrison = (d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1));
+      bool isQualifyingRoll = (d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1) || (d1 == 6 && d2 == 6));
 
       if (activeP.finished && !activeP.isHelper) {
-        if (d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1)) {
+        if (isQualifyingRoll) {
           activeP.isHelper = true;
+          dicePool = [];
           isRolling = false;
+          canRoll = false;
           players = newPlayers;
           notifyListeners();
           Timer(const Duration(milliseconds: 700), () => _endTurn(newPlayers));
@@ -258,8 +285,16 @@ class GameNotifier extends ChangeNotifier {
         return;
       }
 
-      if (pCtrl.finished && !pCtrl.isHelper) {
+      if (actPlayer.finished && !actPlayer.isHelper) {
         Timer(const Duration(milliseconds: 350), () {
+          _aiTurnActive = false;
+          _endTurn(currentPlayers);
+        });
+        return;
+      }
+
+      if (actPlayer.finished && actPlayer.isHelper && allMoves.isEmpty) {
+        Timer(const Duration(milliseconds: 425), () {
           _aiTurnActive = false;
           _endTurn(currentPlayers);
         });
@@ -290,7 +325,7 @@ class GameNotifier extends ChangeNotifier {
     }
 
     // Human player
-    if (pCtrl.finished && !pCtrl.isHelper) {
+    if (actPlayer.finished && !actPlayer.isHelper) {
       Timer(const Duration(milliseconds: 280), () => _endTurn(currentPlayers));
       return;
     }
@@ -301,9 +336,8 @@ class GameNotifier extends ChangeNotifier {
       return;
     }
 
-    if (!settings.autoMoveUnambiguous) return;
-
-    if (pool.length == 1 && allMoves.length == 1 && !currentCanRoll) {
+    // Auto-move if only one valid move available
+    if (allMoves.length == 1 && !currentCanRoll) {
       final only = allMoves.first;
       Timer(const Duration(milliseconds: 420), () => _executeMove(only.piece, only.target, only.dieIndices, currentPlayers, pool, currentCanRoll));
       return;
@@ -339,6 +373,20 @@ class GameNotifier extends ChangeNotifier {
     final myFirstStop = kMyStops[myId]![0];
     bool isTargetFirstSafe = targetPos == myFirstStop;
     bool isCurrentFirstSafe = currentPos == myFirstStop;
+
+    bool isCurrentlyOnSafePlace = false;
+    if (currentState == PieceState.board) {
+      isCurrentlyOnSafePlace = _effectiveSafeZones.contains(currentPos) || _isOwnColoredSafe(myId, currentPos);
+    }
+    
+    // Priority for pieces on white/common squares over safe places
+    if (currentState == PieceState.board) {
+      if (!isCurrentlyOnSafePlace) {
+        score += 4000; // Strong bonus to move pieces off exposed/common squares
+      } else {
+        score -= 4000; // Strong penalty to leave safe places (unless overridden by hits/blocks/chokepoints)
+      }
+    }
 
     // 1. Hit Assessment
     bool isHit = false;
@@ -387,18 +435,41 @@ class GameNotifier extends ChangeNotifier {
     // Count pieces at first stop for block assessment
     int piecesAtFirstStop = players[myId].pieces.where((p) => p.state == PieceState.board && p.pos == myFirstStop).length;
 
+    // Check if any piece is on opponent start borders
+    bool hasPieceOnOpponentStart = false;
+    for (var p in players) {
+      if (p.id != myId && p.partnerId != myId && p.isActive) {
+        int oppFirstStop = kMyStops[p.id]![0];
+        hasPieceOnOpponentStart = players[myId].pieces.any((pc) => pc.state == PieceState.board && pc.pos == oppFirstStop);
+        if (hasPieceOnOpponentStart) break;
+      }
+    }
+
+    // Calculate opponent pieces out for prioritization
+    int opponentPiecesOut = 0;
+    for (var p in players) {
+      if (p.id != myId && p.partnerId != myId && p.isActive) {
+        opponentPiecesOut += p.pieces.where((pc) => pc.state != PieceState.yard).length;
+      }
+    }
+    int myOut = piecesOut;
+
     // 3. Danger and Ambush (Chasing) Scanning
     bool currentlyInDanger = false;
     bool targetInDanger = false;
     bool targetIsChasing = false;
 
+    int minThreatDist = 7; // Initialize to max possible +1
     if (currentState == PieceState.board && !_effectiveSafeZones.contains(currentPos) && sameColorAtCurrent == 0) {
       for (var p in players) {
         if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
         for (var pc in p.pieces) {
           if (pc.state == PieceState.board) {
             int distBehind = (currentPos - pc.pos) % 52;
-            if (distBehind > 0 && distBehind <= 6) currentlyInDanger = true;
+            if (distBehind > 0 && distBehind <= 6) {
+              currentlyInDanger = true;
+              if (distBehind < minThreatDist) minThreatDist = distBehind;
+            }
           }
         }
       }
@@ -433,25 +504,54 @@ class GameNotifier extends ChangeNotifier {
 
     // High priority: Release prisoners when only one piece on board and dice is 6
     int piecesOnBoard = players[myId].pieces.where((p) => p.state == PieceState.board || p.state == PieceState.homeStretch).length;
-    if (piecesOnBoard <= 1 && prisoners > 0 && move.dieValue == 6) {
+    if (piecesOnBoard <= 2 && prisoners > 0 && move.dieValue == 6) {
       if (currentState == PieceState.prison && targetState == PieceState.board) {
         score += 50000; // Highest priority - free prisoners when vulnerable
       }
     }
 
-    // Extra priority for getting pieces out of prison/yard when rolling 6s
+    // Extra priority for getting pieces out of prison/yard when rolling 6/double-6/double-1
+    // Prisoners (Prison) are MORE important than yard pieces
     if (move.dieValue == 6) {
+      int outDiff = opponentPiecesOut - myOut;
       if (currentState == PieceState.prison && targetState == PieceState.board) {
-        score += 40000; // High priority to free prisoners on 6
+        score += 30000; // Prisoners are top priority - higher than yard
+        score += 10000 * (outDiff + 1); // Boost when opponent is further ahead
+        if (piecesOnBoard <= 1) score += 10000; // Extra priority when vulnerable (no or one piece on board)
       }
       if (currentState == PieceState.yard && targetState == PieceState.board) {
-        score += 35000; // High priority to get pieces out on 6
+        score += 20000; // Yard pieces are secondary
+        score += 8000 * (outDiff + 1); // Boost when opponent is further ahead
+      }
+    }
+
+    // When 3+ pieces are stuck in yard and roll is a 6/double-6/double-1,
+    // heavily prioritize pulling pieces out of prison over yard
+    int piecesInYard = players[myId].pieces.where((p) => p.state == PieceState.yard).length;
+    if (prioritizePrison && piecesInYard >= 3 && prisoners > 0) {
+      if (currentState == PieceState.prison && targetState == PieceState.board) {
+        score += 22000; // Bonus: break prisoner block before touching yard
+      }
+    }
+
+    // Enhancement 3: High priority for finishing all pieces
+    int otherPiecesHome = players[myId].pieces.where((p) => p != move.piece && p.state == PieceState.home).length;
+    bool isFinishing = targetState == PieceState.home && otherPiecesHome == 3;
+    if (isFinishing) {
+      score += 150000;
+      if (remainingDice.contains(6)) {
+        score += 20000;
       }
     }
 
     // 🌟 GOD TIER: The Ultimate Choke Point 🌟
     if (formingChokePoint) {
       score += 200000; // Absolute highest priority - over everything including hits and other safe zones
+    }
+
+    // HIGH PRIORITY: Block first stop
+    if (formingBlock && isTargetFirstSafe) {
+      score += 40000; // Prioritize blocking first stop after choke point
     }
 
     // TOP TIER MOVES
@@ -481,20 +581,30 @@ class GameNotifier extends ChangeNotifier {
       // Entering home is highly valuable, but NEVER worth breaking the border-block choke point.
       // When breakingChokePoint is also true the net score stays deeply negative (-88000).
       score += 12000;
+      // Reduce priority if other pieces are still out
+      int piecesNotHome = players[myId].pieces.where((p) => p.state != PieceState.home).length;
+      if (piecesNotHome > 1) {
+        score -= 5000;
+      }
     }
 
     // HIGH TIER TACTICS
     if (formingBlock && _isOwnColoredSafe(myId, targetPos) && !isTargetFirstSafe && !isTargetSecondSafe) {
-      score += 15000; // Common stops only - higher priority than white cell and start/second border
+      score += 5000; // Common stops - lower priority than border stops
     }
 
-    // PENALTY: Avoid stacking two pieces on blank squares
+    // Prioritize landing on own safe zones even without forming block
+    if (_isOwnColoredSafe(myId, targetPos) && !formingBlock) {
+      score += 8000;
+    }
+
+    // PENALTY: Never permit stacking two pieces on blank squares
     if (formingBlock && !_isOwnColoredSafe(myId, targetPos)) {
-      score -= 20000; // Strongly discourage stacking on non-safe squares
+      score -= 100000; // Extremely discourage stacking on non-safe squares
     }
     
     if (currentlyInDanger && !targetInDanger) {
-      score += 6000; // Smart evasion: Running for your life to safety
+      score += 6000 + (7 - minThreatDist) * 1000; // Smart evasion: More bonus for closer threats
     } else if (currentlyInDanger && targetInDanger) {
       score += 1000; // Running from one threat to another (desperation)
     }
@@ -507,7 +617,22 @@ class GameNotifier extends ChangeNotifier {
     }
 
     if (targetIsChasing && !targetInDanger) {
-      score += 2500; // Ambush: Tailing an opponent, putting severe pressure on them
+      score += 4000; // Ambush: Tailing an opponent, putting severe pressure on them
+    }
+
+    // Estimate future hit potential from target position
+    int futureHitPotential = 0;
+    if (targetState == PieceState.board) {
+      for (var p in players) {
+        if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
+        for (var pc in p.pieces) {
+          if (pc.state == PieceState.board) {
+            int dist = (pc.pos - targetPos) % 52;
+            if (dist > 0 && dist <= 6) futureHitPotential++;
+          }
+        }
+      }
+      score += futureHitPotential * 2000; // Bonus for positioning to hit opponents next turn
     }
 
     // LOW TIER MAINTENANCE
@@ -593,30 +718,76 @@ class GameNotifier extends ChangeNotifier {
     final actId = activePlayerId;
     final ctrlId = getControlPlayerId(players);
     if (piece.color != ctrlId || isRolling || players[actId].isAI) return;
-    if (selectedDieIndex == null && dicePool.length != 2) return;
     if (selectedDieIndex != null && piece.hasKilledThisTurn) return;
 
     final pCtrl = players[ctrlId];
-    List<int> selectedIndices = selectedDieIndex != null ? [selectedDieIndex!] : [];
-    int moveVal;
+    final allValidMoves = getAllValidMoves(pCtrl, dicePool, players, settings);
+    if (allValidMoves.length == 1) return; // Auto-move will handle single valid moves
 
-    if (selectedIndices.isNotEmpty) {
-      moveVal = dicePool[selectedIndices[0]];
-      final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: dicePool, dieIndex: selectedIndices[0], settings: settings);
+    if (selectedDieIndex != null) {
+      // Single die selected
+      int moveVal = dicePool[selectedDieIndex!];
+      final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: dicePool, dieIndex: selectedDieIndex!, settings: settings);
       if (dest != null) {
-        _executeMove(piece, dest, selectedIndices, players, dicePool, canRoll);
-        return;
+        _executeMove(piece, dest, [selectedDieIndex!], players, dicePool, canRoll);
       }
     } else if (dicePool.length == 2) {
-      // Try combined
-      selectedIndices = [0, 1];
-      moveVal = dicePool[0] + dicePool[1];
-      final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: [], dieIndex: -1, settings: settings);
-      if (dest != null) {
-        _executeMove(piece, dest, selectedIndices, players, dicePool, canRoll);
-        return;
+      // No die selected, check if combined is possible
+      // First check if any single moves are possible
+      bool hasSingleMove = false;
+      for (int i = 0; i < dicePool.length; i++) {
+        final dest = calculateDestination(pCtrl, piece, dicePool[i], players, pool: dicePool, dieIndex: i, settings: settings);
+        if (dest != null) {
+          hasSingleMove = true;
+          break;
+        }
+      }
+      if (!hasSingleMove) {
+        // Try combined only if no single moves
+        int moveVal = dicePool[0] + dicePool[1];
+        final dest = calculateDestination(pCtrl, piece, moveVal, players, pool: [], dieIndex: -1, settings: settings);
+        if (dest != null) {
+          _executeMove(piece, dest, [0, 1], players, dicePool, canRoll);
+        }
       }
     }
+  }
+
+  bool _checkGameOver(List<Player> newPlayers) {
+    final team1Done = newPlayers[0].finished && newPlayers[2].finished;
+    final team2Done = newPlayers[1].finished && newPlayers[3].finished;
+    final soloDone = newPlayers.any((p) => p.finished);
+
+    final gameOver = (settings.teamPlay && (team1Done || team2Done)) || (!settings.teamPlay && soloDone);
+
+    if (gameOver) {
+
+        Player winner = newPlayers.firstWhere((p) => p.finished);
+
+        final losers = <String>[];
+        losers.addAll(newPlayers.where((p) => p.isActive && !p.finished).map((p) => _nameOf(p)));
+
+        final playerNames = newPlayers.map((p) => _nameOf(p)).toList();
+        final playerIsAI = newPlayers.map((p) => p.isAI).toList();
+
+        history.add(MatchRecord(
+          winnerLabel: _nameOf(winner),
+          playerNames: playerNames,
+          playerIsAI: playerIsAI,
+          playedAt: DateTime.now(),
+          stars: 3,
+          statusText: losers.isEmpty ? 'Solo Victory!' : 'Defeated: ${losers.join(', ')}',
+        ));
+
+        phase = GamePhase.end;
+
+        _aiTurnActive = false;
+
+        AudioService.stopAll();
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   void _executeMove(Piece piece, MoveDestination target, List<int> dieIndicesUsed, List<Player> currentPlayers, List<int> currentPool, bool currentCanRoll) {
@@ -672,80 +843,12 @@ class GameNotifier extends ChangeNotifier {
 
     if (!settings.killToEnter) pCtrl.hasKilled = true;
 
-    final justFinished = !pCtrl.finished && pCtrl.pieces.every((pc) => pc.state == PieceState.home);
-    if (justFinished) pCtrl.finished = true;
-
     players = newPlayers;
     dicePool = newPool;
     canRoll = rewardTurn;
     _autoSelectDie();
 
-    final team1Done = newPlayers[0].finished && newPlayers[2].finished;
-    final team2Done = newPlayers[1].finished && newPlayers[3].finished;
-    final soloDone = newPlayers.any((p) => p.finished);
-    
-    final gameOver = (settings.teamPlay && (team1Done || team2Done)) || (!settings.teamPlay && soloDone);
-
-    if (gameOver) {
-      AudioService.play('wining');
-      int stars = 1;
-      String statusDesc = "";
-      List<String> winners = [];
-      List<String> losers = [];
-      int unscathedWinners = 0;
-
-      if (settings.teamPlay) {
-        if (team1Done) {
-          winners.addAll([_nameOf(newPlayers[0]), _nameOf(newPlayers[2])]);
-          losers.addAll([_nameOf(newPlayers[1]), _nameOf(newPlayers[3])]);
-          if (newPlayers[0].timesHit == 0) unscathedWinners++;
-          if (newPlayers[2].timesHit == 0) unscathedWinners++;
-        } else {
-          winners.addAll([_nameOf(newPlayers[1]), _nameOf(newPlayers[3])]);
-          losers.addAll([_nameOf(newPlayers[0]), _nameOf(newPlayers[2])]);
-          if (newPlayers[1].timesHit == 0) unscathedWinners++;
-          if (newPlayers[3].timesHit == 0) unscathedWinners++;
-        }
-        stars = unscathedWinners > 0 ? unscathedWinners + 1 : 1;
-      } else {
-        Player winner = newPlayers.firstWhere((p) => p.finished);
-        winners.add(_nameOf(winner));
-        losers.addAll(newPlayers.where((p) => p.isActive && !p.finished).map((p) => _nameOf(p)));
-        if (winner.timesHit == 0) stars = 2; // Single unscathed
-      }
-
-      String winnerStr = winners.join(' and ');
-      String loserStr = losers.join(' and ');
-      statusDesc = "$winnerStr won the game from $loserStr";
-      if (unscathedWinners > 0 || stars >= 2) {
-        statusDesc += " unscathed!";
-      } else {
-        statusDesc += "!";
-      }
-
-      history.add(MatchRecord(
-        winnerLabel: winners.join(' & '),
-        playerNames: newPlayers.where((p) => p.isActive).map(_nameOf).toList(),
-        playerIsAI: newPlayers.where((p) => p.isActive).map((p) => p.isAI).toList(),
-        playedAt: DateTime.now(),
-        stars: stars,
-        statusText: statusDesc,
-      ));
-      _saveHistory();
-      
-      phase = GamePhase.end;
-      notifyListeners();
-      return;
-    }
-
-    if (justFinished) {
-      // Player finished, end turn normally. Partner will play in their own turn series.
-      dicePool = [];
-      canRoll = false;
-      notifyListeners();
-      Timer(const Duration(milliseconds: 300), () => _endTurn(newPlayers));
-      return;
-    }
+    if (_checkGameOver(newPlayers)) return;
 
     notifyListeners();
 
@@ -769,10 +872,11 @@ class GameNotifier extends ChangeNotifier {
     }
     players = newPlayers;
     
-    // Skip inactive players
+    // Skip inactive players. Also in solo play, skip finished players. 
+    // In team play, finished players are NOT skipped so they can take turns to roll for their partners (helpers).
     do {
       turnSlot = (turnSlot + 1) % 4;
-    } while (!players[turnSlot].isActive);
+    } while (!players[turnSlot].isActive || (players[turnSlot].finished && !settings.teamPlay));
 
     dicePool = [];
     consecutiveExtra = 0;

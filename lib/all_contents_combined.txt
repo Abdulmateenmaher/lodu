@@ -4461,12 +4461,8 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
           ShaderMask(
             shaderCallback: (b) => const LinearGradient(
               colors: [Color(0xFFef4444), Color(0xFFfacc15), Color(0xFF22c55e), Color(0xFF3b82f6)],
-            ).createShader(b),
-            child: const Text('وطني چکه', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 6)),
-          ),
-          const SizedBox(height: 2),
-          const Text('Classic Board Game', style: TextStyle(color: Color(0xFF64748b), fontSize: 12, letterSpacing: 2)),
-        ],
+            ).createShader(b)),
+          const SizedBox(height: 2),],
       ),
     );
   }

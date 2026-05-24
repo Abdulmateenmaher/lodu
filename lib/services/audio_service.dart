@@ -108,6 +108,14 @@ class AudioService {
     }
   }
 
+  /// Stop all currently playing sounds
+  static Future<void> stopAll() async {
+    for (final player in _players.values) {
+      await player.stop();
+    }
+    _isPlaying.clear();
+  }
+
   /// Dispose all audio players
   static Future<void> dispose() async {
     for (final player in _players.values) {

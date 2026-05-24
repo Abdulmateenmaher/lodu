@@ -70,6 +70,7 @@ class _MatchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = record.playedAt;
     final timeStr = '${now.day}/${now.month}/${now.year}  ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final winners = record.winnerLabel.split('+');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -99,27 +100,62 @@ class _MatchCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Text(record.statusText, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+          Row(
+            children: [
+              const Icon(Icons.emoji_events, color: Color(0xFFFFD700), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  record.winnerLabel,
+                  style: const TextStyle(color: Color(0xFFFFD700), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8, runSpacing: 8,
             children: List.generate(record.playerNames.length, (i) {
               final color = kColors[i]!.main;
+              final isWinner = winners.contains(record.playerNames[i]);
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: color.withValues(alpha: 0.6)),
+                  color: isWinner ? const Color(0xFFFFD700).withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isWinner ? const Color(0xFFFFD700) : color.withValues(alpha: 0.6),
+                    width: isWinner ? 2 : 1,
+                  ),
+                  boxShadow: isWinner ? [const BoxShadow(color: Color(0xFFFFD700), blurRadius: 8, spreadRadius: 1)] : null,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: color, blurRadius: 4)])),
-                    const SizedBox(width: 6),
-                    Text(record.playerNames[i], style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    if (isWinner) ...[
+                      const Icon(Icons.emoji_events, color: Color(0xFFFFD700), size: 14),
+                      const SizedBox(width: 4),
+                    ],
+                    Container(
+                      width: 12, height: 12,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: color, blurRadius: 6)],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      record.playerNames[i],
+                      style: TextStyle(
+                        color: isWinner ? const Color(0xFFFFD700) : Colors.white,
+                        fontSize: 13,
+                        fontWeight: isWinner ? FontWeight.w900 : FontWeight.bold,
+                      ),
+                    ),
                     if (record.playerIsAI[i]) ...[
                       const SizedBox(width: 6),
-                      Icon(Icons.memory, color: color.withValues(alpha: 0.9), size: 12),
+                      Icon(Icons.memory, color: color.withValues(alpha: 0.9), size: 14),
                     ],
                   ],
                 ),
