@@ -39,11 +39,15 @@ class _RootRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final phase = context.select<GameNotifier, GamePhase>((g) => g.phase);
-    return switch (phase) {
-      GamePhase.setup => const SetupScreen(),
-      GamePhase.play  => const GameScreen(),
-      GamePhase.end   => const EndScreen(),
-    };
+    final game = context.watch<GameNotifier>();
+
+    switch (game.phase) {
+      case GamePhase.setup:
+        return const SetupScreen();
+      case GamePhase.play:
+        return const GameScreen();
+      case GamePhase.end:
+        return const EndScreen();
+    }
   }
 }
