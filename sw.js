@@ -1,9 +1,19 @@
 // Custom Service Worker for Lodu PWA
 // Handles offline audio playback and proper caching
+//
+// IMPORTANT: bump the *_BASE version below any time you ship a new
+// release. The `activate` handler deletes every cache whose name matches
+// one of these bases but has a different version, which is what
+// invalidates a stale `main.dart.js` (or any other precached asset) in
+// the user's browser after a deploy.
 
-const PRECACHE = 'lodu-precache-v1';
-const RUNTIME = 'lodu-runtime-v1';
-const AUDIO_CACHE = 'lodu-audio-v1';
+const PRECACHE_BASE = 'lodu-precache';
+const RUNTIME_BASE  = 'lodu-runtime';
+const AUDIO_BASE    = 'lodu-audio';
+const SW_VERSION    = 'v2';
+const PRECACHE = `${PRECACHE_BASE}-${SW_VERSION}`;
+const RUNTIME  = `${RUNTIME_BASE}-${SW_VERSION}`;
+const AUDIO_CACHE = `${AUDIO_BASE}-${SW_VERSION}`;
 
 // Precache these critical assets
 const PRECACHE_URLS = [
@@ -55,13 +65,21 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: Clean up old caches
+// Activate: Clean up old caches. Any cache whose name starts with one of
+// the *_BASE prefixes above but is NOT the current version is dropped
+// unconditionally — that's how a stale `main.dart.js` (or any other
+// precached asset) gets evicted after a deploy.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== PRECACHE && cacheName !== RUNTIME && cacheName !== AUDIO_CACHE) {
+          const isOldVersion =
+            (cacheName.startsWith(PRECACHE_BASE + '-') && cacheName !== PRECACHE) ||
+            (cacheName.startsWith(RUNTIME_BASE  + '-') && cacheName !== RUNTIME)  ||
+            (cacheName.startsWith(AUDIO_BASE    + '-') && cacheName !== AUDIO_CACHE);
+          if (isOldVersion) {
+            console.log('[sw] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
