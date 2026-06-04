@@ -47,10 +47,10 @@ class _BoardGrid extends StatelessWidget {
     final List<Widget> cells = [];
 
     final yardDefs = [
-      {'id': 0, 'top': 0.6, 'left': 0.0},
-      {'id': 1, 'top': 0.0, 'left': 0.0},
-      {'id': 2, 'top': 0.0, 'left': 0.6},
-      {'id': 3, 'top': 0.6, 'left': 0.6},
+      {'id': 0, 'top': 0.6, 'left': 0.0, 'nameSide': 'left'},
+      {'id': 1, 'top': 0.0, 'left': 0.0, 'nameSide': 'top'},
+      {'id': 2, 'top': 0.0, 'left': 0.6, 'nameSide': 'right'},
+      {'id': 3, 'top': 0.6, 'left': 0.6, 'nameSide': 'bottom'},
     ];
     for (final y in yardDefs) {
       final id = y['id'] as int;
@@ -68,6 +68,20 @@ class _BoardGrid extends StatelessWidget {
           ),
         ),
       );
+      // Add player name label inside the yard
+      final playerName = game.players.isNotEmpty ? game.players[id].name : '';
+      if (playerName.isNotEmpty) {
+        cells.add(
+          _PlayerNameLabel(
+            name: playerName,
+            color: kColors[id]!.main,
+            yardTop: y['top'] as double,
+            yardLeft: y['left'] as double,
+            boardSize: size,
+            playerId: id,
+          ),
+        );
+      }
     }
 
     cells.add(
@@ -204,5 +218,88 @@ class _PiecesLayer extends StatelessWidget {
     double x = 0, y = 0;
     if (pc.state == PieceState.yard) { final c = kYardCoords[pc.color]![pc.id]; x = c['x']!.toDouble(); y = c['y']!.toDouble(); return {'cx': x * cw, 'cy': y * cw}; } else if (pc.state == PieceState.prison) { final base = kPrisonCoords[pc.prisonerOf ?? pc.color]!; x = base['x']! + pc.id * 0.4; y = base['y']! + pc.id * 0.4; } else if (pc.state == PieceState.homeStretch) { final c = kHomeStretches[pc.color]![pc.pos]; x = c['x']!.toDouble(); y = c['y']!.toDouble(); } else if (pc.state == PieceState.home) { final c = kHomeStackCoords[pc.color]!; x = c['x']!; y = c['y']!; } else if (pc.state == PieceState.board) { final c = kPathCoords[pc.pos]; x = c['x']!.toDouble(); y = c['y']!.toDouble(); }
     return {'cx': (x + 0.5) * cw, 'cy': (y + 0.5) * cw};
+  }
+}
+
+/// Player name label positioned INSIDE the yard area at the top
+/// All players have names at the top of their respective yards
+class _PlayerNameLabel extends StatelessWidget {
+  final String name;
+  final Color color;
+  final double yardTop;
+  final double yardLeft;
+  final double boardSize;
+  final int playerId;
+
+  const _PlayerNameLabel({
+    required this.name,
+    required this.color,
+    required this.yardTop,
+    required this.yardLeft,
+    required this.boardSize,
+    required this.playerId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final yardSize = boardSize * 0.4;
+    final labelHeight = boardSize * 0.04;
+    final labelWidth = yardSize * 0.55;
+    
+    // Position label based on player position:
+    // Red (0) bottom-left, Blue (3) bottom-right -> names at BOTTOM of yard
+    // Green (1) top-left, Yellow (2) top-right -> names at TOP of yard
+    final double top;
+    if (playerId == 0 || playerId == 3) {
+      // Bottom yards - position near the bottom edge
+      top = (yardTop + 0.4) * boardSize - labelHeight - boardSize * 0.015;
+    } else {
+      // Top yards - position near the top edge
+      top = yardTop * boardSize + boardSize * 0.015;
+    }
+    final left = yardLeft * boardSize + (yardSize - labelWidth) / 2;
+
+    return Positioned(
+      top: top,
+      left: left,
+      width: labelWidth,
+      height: labelHeight,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(labelHeight / 2),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.4),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Text(
+              name,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: labelHeight * 0.5,
+                fontWeight: FontWeight.bold,
+                shadows: [
+                  Shadow(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    blurRadius: 1,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

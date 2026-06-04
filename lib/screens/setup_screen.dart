@@ -4,6 +4,7 @@ import '../constants/board_constants.dart';
 import '../logic/game_notifier.dart';
 import '../models/game_settings.dart';
 import 'history_screen.dart';
+import 'online_setup_screen.dart';
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -96,6 +97,8 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                        _buildStartButton(),
                        const SizedBox(height: 16),
                        _buildHistoryButton(),
+                       const SizedBox(height: 12),
+                       _buildOnlineButton(),
                        const SizedBox(height: 24),
                     ],
                   ),
@@ -203,6 +206,23 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
         style: OutlinedButton.styleFrom(
           foregroundColor: const Color(0xFF94a3b8),
           side: const BorderSide(color: Color(0xFF1f2937)),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOnlineButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OnlineSetupScreen())),
+        icon: const Icon(Icons.wifi, size: 20),
+        label: const Text('Play Online', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF22c55e),
+          side: const BorderSide(color: Color(0xFF22c55e)),
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
