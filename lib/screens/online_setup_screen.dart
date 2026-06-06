@@ -1,35 +1,20 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../logic/online_game_notifier.dart';
 import '../models/online_models.dart';
+import '../services/audio_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/common/glass_card.dart';
+import '../widgets/common/gradient_button.dart';
+import '../widgets/common/status_pill.dart';
 import 'online_game_screen.dart';
 
-/// Backend base URL.
-///
-/// IMPORTANT — read this if the deployed app can't connect:
-/// In Flutter Web *release* builds the value of a `const` String is
-/// **baked into the generated `main.dart.js`** at compile time. It is
-/// *not* read from the source at runtime. That means if you ever change
-/// the value here, you MUST re-run `flutter build web` AND redeploy
-/// the new `build/web/` folder — otherwise the browser keeps hitting
-/// whichever URL was compiled into the previous bundle (this is exactly
-/// why the Netlify deploy was still pointing at the old
-/// `ludo-game.runasp.net` even after the source was updated to
-/// `ludu-backend.onrender.com`).
-///
-/// To override at build time use:
-///   flutter build web --dart-define=SERVER_URL=https://your-server.com
-/// If `--dart-define` is not supplied, the `defaultValue` below is used.
 const String _kServerUrl = String.fromEnvironment(
   'SERVER_URL',
   defaultValue: 'https://ludu-backend.onrender.com',
 );
 
-/// Strips a trailing slash so we never produce `…//gamehub` when the
-/// caller (or a future `--dart-define`) passes a URL ending with `/`.
 String _normalizeServerUrl(String url) =>
     url.endsWith('/') ? url.substring(0, url.length - 1) : url;
-
 
 class OnlineSetupScreen extends StatefulWidget {
   const OnlineSetupScreen({super.key});
@@ -43,30 +28,21 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   final _nameCtrl = TextEditingController();
   int _playerCount = 4;
   bool _isConnecting = false;
-  bool _pendingDialogOpen = false;
   bool _navigatedToGame = false;
 
   @override
   void initState() {
     super.initState();
     _notifier = OnlineGameNotifier();
-    // Log the resolved backend URL exactly once so you can verify in the
-    // browser console which server the deployed build is pointing at.
-    // (In release mode this still goes to `console.log` — no UI cost.)
     debugPrint('[Lodu] Backend URL = $_kServerUrl');
-    // Connect immediately so lobby loads on screen open
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoConnect());
-
-    // Listen for phase changes to navigate to game screen
     _notifier.addListener(_onPhaseChanged);
   }
-  
+
   void _onPhaseChanged() {
-    // When phase changes to lobby/playing (after being accepted as a player),
-    // navigate to the game screen as a new route to avoid setup screen issues
-    if (!_navigatedToGame && 
-        (_notifier.onlinePhase == OnlinePhase.lobby || 
-         _notifier.onlinePhase == OnlinePhase.playing)) {
+    if (!_navigatedToGame &&
+        (_notifier.onlinePhase == OnlinePhase.lobby ||
+            _notifier.onlinePhase == OnlinePhase.playing)) {
       _navigatedToGame = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -94,8 +70,6 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   void dispose() {
     _notifier.removeListener(_onPhaseChanged);
     _nameCtrl.dispose();
-    // Don't dispose _notifier if we navigated to game screen
-    // The game screen will handle disposal
     if (!_navigatedToGame) {
       _notifier.dispose();
     }
@@ -112,20 +86,32 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
             _notifier.onlinePhase == OnlinePhase.ended) {
           return OnlineGameScreen(notifier: _notifier);
         }
-
         return Scaffold(
-          backgroundColor: const Color(0xFF0a0f1e),
+          backgroundColor: AppTheme.bgDeep,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF111827),
-            title: const Text('Play Online', style: TextStyle(color: Colors.white)),
+            backgroundColor: AppTheme.bgPanel,
+            title: const Text(
+              'Play Online',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
               onPressed: () => Navigator.pop(context),
             ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: _ConnectionPill(connected: _notifier.isHubConnected),
+              ),
+            ],
           ),
-          body: _notifier.onlinePhase == OnlinePhase.connecting || _isConnecting
-              ? const Center(child: CircularProgressIndicator())
-              : _buildBody(ctx),
+          body:
+              _notifier.onlinePhase == OnlinePhase.connecting || _isConnecting
+                  ? _ConnectingState(serverUrl: _kServerUrl)
+                  : _buildBody(ctx),
         );
       },
     );
@@ -137,91 +123,132 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Your name
-          _SectionLabel('Your Name'),
-          const SizedBox(height: 6),
+          _ServerUrlChip(url: _kServerUrl),
+          const SizedBox(height: 16),
+          const _SectionLabel('Your Name', icon: Icons.badge_rounded),
+          const SizedBox(height: 8),
           TextField(
             controller: _nameCtrl,
-            style: const TextStyle(color: Colors.white),
+            style: const TextStyle(color: Colors.white, fontSize: 15),
             decoration: _inputDec('Enter your name'),
           ),
-
-          const SizedBox(height: 24),
-
+          const SizedBox(height: 20),
           if (_notifier.onlinePhase == OnlinePhase.error) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
-              ),
-              child: Text(_notifier.errorMsg ?? 'Unknown error',
-                  style: const TextStyle(color: Colors.red)),
-            ),
+            _ErrorCard(message: _notifier.errorMsg ?? 'Unknown error'),
             const SizedBox(height: 16),
           ],
-
-          // ── Host a game ──
-          _SectionLabel('Host a Game'),
+          const _SectionLabel(
+            'Host a Game',
+            icon: Icons.add_circle_outline_rounded,
+          ),
           const SizedBox(height: 8),
-          Row(children: [
-            const Text('Players: ', style: TextStyle(color: Colors.white70)),
-            const SizedBox(width: 8),
-            ...[2, 3, 4].map((n) => Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _CountButton(
-                    label: '$n',
-                    selected: _playerCount == n,
-                    onTap: () => setState(() => _playerCount = n),
+          GlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Players',
+                  style: TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
                   ),
-                )),
-          ]),
-          const SizedBox(height: 10),
-          ElevatedButton.icon(
-            onPressed: _createRoom,
-            icon: const Icon(Icons.add_circle_outline),
-            label: const Text('Create Room',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2563eb),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [2, 3, 4].map((n) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _CountButton(
+                        label: '$n',
+                        selected: _playerCount == n,
+                        onTap: () {
+                          Haptics.selection();
+                          setState(() => _playerCount = n);
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 14),
+                GradientButton(
+                  label: 'Create Room',
+                  icon: Icons.add_circle_outline_rounded,
+                  onPressed: _createRoom,
+                  expand: true,
+                  gradient: AppTheme.primaryButton,
+                ),
+              ],
             ),
           ),
-
-          const SizedBox(height: 28),
-
-          // ── Join a game ──
+          const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _SectionLabel('Available Rooms'),
+              const _SectionLabel(
+                'Available Rooms',
+                icon: Icons.meeting_room_rounded,
+              ),
               TextButton.icon(
                 onPressed: _refreshLobby,
-                icon: const Icon(Icons.refresh, size: 16, color: Color(0xFF60a5fa)),
-                label: const Text('Refresh',
-                    style: TextStyle(color: Color(0xFF60a5fa), fontSize: 12)),
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  size: 16,
+                  color: AppTheme.accentBlue,
+                ),
+                label: const Text(
+                  'Refresh',
+                  style: TextStyle(
+                    color: AppTheme.accentBlue,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-
           if (_notifier.lobbyList.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text('No rooms available.\nCreate one or refresh.',
+            GlassCard(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                children: const [
+                  Icon(
+                    Icons.videogame_asset_off_rounded,
+                    color: AppTheme.textFaint,
+                    size: 32,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'No rooms available',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Create one or refresh in a few seconds.',
+                    style: TextStyle(
+                      color: AppTheme.textMuted,
+                      fontSize: 12,
+                    ),
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white38)),
+                  ),
+                ],
               ),
             )
           else
-            ..._notifier.lobbyList.map((room) => _RoomTile(
-                  room: room,
-                  onJoin: () => _requestJoin(room.roomId),
-                )),
+            ..._notifier.lobbyList.map((room) {
+              return _RoomTile(
+                room: room,
+                onJoin: () => _requestJoin(room.roomId),
+              );
+            }),
         ],
       ),
     );
@@ -238,7 +265,10 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
 
   Future<void> _createRoom() async {
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) { _showSnack('Enter your name first'); return; }
+    if (name.isEmpty) {
+      _showSnack('Enter your name first');
+      return;
+    }
     setState(() => _isConnecting = true);
     try {
       await _ensureConnected();
@@ -265,7 +295,10 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
 
   Future<void> _requestJoin(String roomId) async {
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) { _showSnack('Enter your name first'); return; }
+    if (name.isEmpty) {
+      _showSnack('Enter your name first');
+      return;
+    }
     setState(() => _isConnecting = true);
     try {
       await _ensureConnected();
@@ -278,106 +311,314 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
   }
 
   void _showPendingDialog() {
-    _pendingDialogOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => ListenableBuilder(
         listenable: _notifier,
-        builder: (ctx, __) {
+        builder: (ctx, _) {
           final status = _notifier.joinRequestStatus;
           final phase = _notifier.onlinePhase;
-          
-          // Close dialog when declined or when successfully joined (phase changes to lobby)
           if (status == 'declined' || phase == OnlinePhase.lobby) {
-            _pendingDialogOpen = false;
-            // Use WidgetsBinding to safely close the dialog after frame
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (dialogContext.mounted) {
                 Navigator.of(dialogContext).pop();
               }
             });
           }
-          
-          return AlertDialog(
-            backgroundColor: const Color(0xFF111827),
-            title: const Text('Join Request Sent', style: TextStyle(color: Colors.white)),
-            content: Text(
-              status == 'declined'
-                  ? 'Host declined your request.'
-                  : 'Waiting for host to approve…',
-              style: const TextStyle(color: Color(0xFF94a3b8)),
+          return Dialog(
+            backgroundColor: AppTheme.bgPanel,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusLg),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748b))),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: AppTheme.accentYellow,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Join Request Sent',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    status == 'declined'
+                        ? 'Host declined your request.'
+                        : 'Waiting for host to approve…',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppTheme.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: AppTheme.textMuted),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
     );
   }
 
-  void _showSnack(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppTheme.bgPanelAlt,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        ),
+      ),
+    );
+  }
 
   InputDecoration _inputDec(String hint) => InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white24),
         filled: true,
-        fillColor: const Color(0xFF1e293b),
+        fillColor: AppTheme.bgPanel,
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFF334155))),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          borderSide: const BorderSide(color: AppTheme.borderStrong),
+        ),
         enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFF334155))),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          borderSide: const BorderSide(color: AppTheme.borderStrong),
+        ),
         focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFF60a5fa))),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+          borderSide: const BorderSide(
+            color: AppTheme.accentBlue,
+            width: 1.5,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
       );
+}
+
+class _ConnectionPill extends StatelessWidget {
+  final bool connected;
+  const _ConnectionPill({required this.connected});
+  @override
+  Widget build(BuildContext context) {
+    return StatusPill(
+      text: connected ? 'Live' : 'Offline',
+      color: connected ? AppTheme.accentGreen : AppTheme.accentRed,
+      icon: connected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+      pulse: connected,
+    );
+  }
+}
+
+class _ConnectingState extends StatelessWidget {
+  final String serverUrl;
+  const _ConnectingState({required this.serverUrl});
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: AppTheme.accentGreen,
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Connecting to server…',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            serverUrl,
+            style: const TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 11,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServerUrlChip extends StatelessWidget {
+  final String url;
+  const _ServerUrlChip({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.bgPanel,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_rounded, color: AppTheme.accentBlue, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              url,
+              style: const TextStyle(
+                color: AppTheme.textMuted,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: AppTheme.accentGreen,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  final String message;
+  const _ErrorCard({required this.message});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.accentRed.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(
+          color: AppTheme.accentRed.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppTheme.accentRed,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: AppTheme.accentRed,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SectionLabel extends StatelessWidget {
   final String text;
-  const _SectionLabel(this.text);
+  final IconData icon;
+  const _SectionLabel(this.text, {required this.icon});
 
   @override
-  Widget build(BuildContext context) => Text(text,
-      style: const TextStyle(
-          color: Color(0xFF94a3b8),
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.5));
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: AppTheme.textMuted, size: 14),
+        const SizedBox(width: 6),
+        Text(
+          text.toUpperCase(),
+          style: const TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _CountButton extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _CountButton({required this.label, required this.selected, required this.onTap});
+  const _CountButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 40,
-          height: 40,
+          duration: AppTheme.durFast,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF2563eb) : const Color(0xFF1e293b),
-            borderRadius: BorderRadius.circular(8),
+            gradient: selected ? AppTheme.primaryButton : null,
+            color: selected ? null : AppTheme.bgPanel,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             border: Border.all(
-                color: selected ? const Color(0xFF2563eb) : const Color(0xFF334155)),
+              color: selected
+                  ? AppTheme.accentBlueDeep
+                  : AppTheme.borderStrong,
+            ),
           ),
           child: Center(
-            child: Text(label,
-                style: TextStyle(
-                    color: selected ? Colors.white : Colors.white54,
-                    fontWeight: FontWeight.bold)),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : AppTheme.textMuted,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
           ),
         ),
       );
@@ -394,32 +635,77 @@ class _RoomTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1e293b),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF334155)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+                        Color(0xFF1e293b),
+            Color(0xFF0f172a),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+        border: Border.all(color: AppTheme.borderStrong),
       ),
       child: Row(children: [
-        const Icon(Icons.videogame_asset, color: Color(0xFF60a5fa), size: 20),
+        Container(
+          width: 40,
+          height: 40,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF60a5fa), Color(0xFF2563eb)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.all(Radius.circular(10)),
+          ),
+          child: const Icon(Icons.videogame_asset_rounded,
+              color: Colors.white, size: 22),
+        ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(room.hostName,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                room.hostName,
                 style: const TextStyle(
-                    color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
-            Text('${room.filledSlots}/${room.maxSlots} players  •  ${room.settingsLabel}',
-                style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          ]),
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${room.filledSlots}/${room.maxSlots} players - ${room.settingsLabel}',
+                style: const TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
         ),
         ElevatedButton(
           onPressed: onJoin,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF22c55e),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            minimumSize: Size.zero,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            backgroundColor: AppTheme.accentGreen,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            ),
+            elevation: 4,
+            shadowColor: AppTheme.accentGreen.withValues(alpha: 0.5),
           ),
-          child: const Text('Join',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+          child: const Text(
+            'Join',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
         ),
       ]),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 const _dotPositions = {
   1: [4],
@@ -28,12 +29,17 @@ class DiceCellWidget extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: AppTheme.durFast,
+        curve: AppTheme.curveStandard,
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(size * 0.2),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, Color(0xFFf1f5f9)],
+          ),
+          borderRadius: BorderRadius.circular(size * 0.22),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFFfacc15)
@@ -48,8 +54,8 @@ class DiceCellWidget extends StatelessWidget {
             ),
             if (isSelected)
               BoxShadow(
-                color: const Color(0xFFfacc15).withValues(alpha: 0.5),
-                blurRadius: 10,
+                color: const Color(0xFFfacc15).withValues(alpha: 0.55),
+                blurRadius: 14,
                 spreadRadius: 1,
               ),
           ],
@@ -75,11 +81,11 @@ class DiceCellWidget extends StatelessWidget {
         final hasDot = _dotPositions[value]?.contains(index) ?? false;
         if (!hasDot) return const SizedBox();
         return Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              center: const Alignment(-0.3, -0.3),
-              colors: [const Color(0xFF444444), const Color(0xFF000000)],
+              center: Alignment(-0.3, -0.3),
+              colors: [Color(0xFF444444), Color(0xFF000000)],
             ),
           ),
         );
@@ -124,11 +130,19 @@ class DiceCellRow extends StatelessWidget {
           padding: EdgeInsets.only(
             right: index < diceValues.length - 1 ? 8 : 0,
           ),
-          child: DiceCellWidget(
-            value: diceValues[index],
-            isSelected: selectedIndex == index,
-            size: cellSize,
-            onTap: onDieTap != null ? () => onDieTap!(index) : null,
+          child: AnimatedSwitcher(
+            duration: AppTheme.durFast,
+            transitionBuilder: (child, anim) => ScaleTransition(
+              scale: Tween<double>(begin: 0.6, end: 1).animate(anim),
+              child: FadeTransition(opacity: anim, child: child),
+            ),
+            child: DiceCellWidget(
+              key: ValueKey('die-$index-${diceValues[index]}'),
+              value: diceValues[index],
+              isSelected: selectedIndex == index,
+              size: cellSize,
+              onTap: onDieTap != null ? () => onDieTap!(index) : null,
+            ),
           ),
         );
       }),
@@ -147,8 +161,12 @@ class _EmptyDiceCell extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFFf1f5f9),
-        borderRadius: BorderRadius.circular(size * 0.2),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFf1f5f9), Color(0xFFe2e8f0)],
+        ),
+        borderRadius: BorderRadius.circular(size * 0.22),
         border: Border.all(color: const Color(0xFFcbd5e1), width: 2),
       ),
       child: Center(

@@ -1,12 +1,24 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-/// Centralized service to handle game audio with proper preloading and mobile support.
+/// Centralized service to handle game audio with proper preloading and mobile
+/// support. All original logic is preserved — this update only adds:
+///   * a per-sound `setMuted` toggle persisted in SharedPreferences
+///   * a `Haptics` helper that fires the system vibration on key events
+///   * safe-guards so muted/initialised checks don't break the original flow
 class AudioService {
   static final Map<String, AudioPlayer> _players = {};
   static bool _isInitialized = false;
   static final Map<String, bool> _isPlaying = {}; // Track playing state per sound
   static bool _isOffline = false;
+
+  // ── New: muted toggle ──────────────────────────────────────────────────
+  static const String _kMutedKey = 'audio_muted';
+  static bool _isMuted = false;
+  static bool get isMuted => _isMuted;
+  static ValueNotifier<bool> mutedNotifier = ValueNotifier<bool>(false);
 
   static const List<String> _soundFiles = [
     'start_game',
@@ -55,11 +67,32 @@ class AudioService {
         }
       }
 
+      // Restore muted state from prefs (best-effort, never throws)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        _isMuted = prefs.getBool(_kMutedKey) ?? false;
+        mutedNotifier.value = _isMuted;
+      } catch (_) {}
+
       _isInitialized = true;
-      debugPrint('AudioService initialized with ${_players.length} preloaded sounds (offline: $_isOffline)');
+      debugPrint('AudioService initialized with ${_players.length} preloaded sounds (offline: $_isOffline, muted: $_isMuted)');
     } catch (e) {
       debugPrint('AudioService initialization error: $e');
       _isInitialized = true; // Still mark as initialized to allow graceful degradation
+    }
+  }
+
+  /// Persisted mute toggle. When muted, `play` is a no-op for audio.
+  static Future<void> setMuted(bool value) async {
+    _isMuted = value;
+    mutedNotifier.value = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kMutedKey, value);
+    } catch (_) {}
+    if (value) {
+      // Stop any in-flight sounds immediately
+      await stopAll();
     }
   }
 
@@ -74,11 +107,13 @@ class AudioService {
     }
   }
 
-  /// Play a sound by name
+  /// Play a sound by name (with mute check)
   static Future<void> play(String soundName) async {
+    if (_isMuted) return; // New: respect mute
     if (!_isInitialized) {
       await initialize();
     }
+    if (_isMuted) return; // recheck in case init flipped it
 
     final player = _players[soundName];
     if (player == null) {
@@ -123,5 +158,25 @@ class AudioService {
     }
     _players.clear();
     _isInitialized = false;
+  }
+}
+
+/// Lightweight wrapper around `HapticFeedback` so the rest of the app can
+/// trigger device haptics without importing `flutter/services` everywhere.
+class Haptics {
+  Haptics._();
+
+  /// Light tap — used for selectable piece highlights, die selection, etc.
+  static Future<void> light() => _safe(HapticFeedback.lightImpact);
+  static Future<void> medium() => _safe(HapticFeedback.mediumImpact);
+  static Future<void> heavy() => _safe(HapticFeedback.heavyImpact);
+  static Future<void> selection() => _safe(HapticFeedback.selectionClick);
+
+  static Future<void> _safe(Future<void> Function() fn) async {
+    try {
+      await fn();
+    } catch (_) {
+      // Some platforms (web) may not support haptics; never crash.
+    }
   }
 }

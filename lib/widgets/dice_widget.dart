@@ -39,7 +39,8 @@ class DiceWidget extends StatefulWidget {
   State<DiceWidget> createState() => _DiceWidgetState();
 }
 
-class _DiceWidgetState extends State<DiceWidget> with SingleTickerProviderStateMixin {
+class _DiceWidgetState extends State<DiceWidget>
+    with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _rollAnim;
 
@@ -84,7 +85,8 @@ class _DiceWidgetState extends State<DiceWidget> with SingleTickerProviderStateM
             s,
             rx: t,
             ry: t,
-            translateY: -10 * (0.5 - (t / (2 * pi) - (t / (2 * pi)).floor() - 0.5).abs()),
+            translateY:
+                -10 * (0.5 - (t / (2 * pi) - (t / (2 * pi)).floor() - 0.5).abs()),
             value: widget.value,
             half: half,
           );
@@ -93,10 +95,18 @@ class _DiceWidgetState extends State<DiceWidget> with SingleTickerProviderStateM
     }
 
     final rot = _faceRotations[widget.value] ?? (0.0, 0.0);
-    return _buildDiceFace(s, rx: rot.$1, ry: rot.$2, translateY: 0, value: widget.value, half: half);
+    return _buildDiceFace(
+      s,
+      rx: rot.$1,
+      ry: rot.$2,
+      translateY: 0,
+      value: widget.value,
+      half: half,
+    );
   }
 
-  Widget _buildDiceFace(double s, {
+  Widget _buildDiceFace(
+    double s, {
     required double rx,
     required double ry,
     required double translateY,
@@ -136,9 +146,15 @@ class _DiceFace extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(size * 0.2),
-        border: Border.all(color: const Color(0xFFeeeeee), width: 2),
+        // Subtle gradient for a slightly more "premium" feel without changing
+        // the overall piece style.
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFffffff), Color(0xFFf3f4f6)],
+        ),
+        borderRadius: BorderRadius.circular(size * 0.22),
+        border: Border.all(color: const Color(0xFFe2e8f0), width: 2),
         boxShadow: const [
           BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(2, 4)),
           BoxShadow(color: Colors.black12, blurRadius: 2, spreadRadius: 1),
