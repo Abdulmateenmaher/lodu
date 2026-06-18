@@ -157,6 +157,13 @@ class GameNotifier extends ChangeNotifier {
 
       final allHome = activeP.pieces.every((pc) => pc.state == PieceState.home);
       if (allHome && !activeP.finished) {
+        // 🔥 CRITICAL: Clear the dice pool before the winning roll attempt
+        // When all pieces are home and player has an extra turn, any leftover
+        // dice from the previous turn must be discarded. The player gets a
+        // fresh roll to attempt the winning condition.
+        dicePool = [];
+        
+        // Winning condition: single 6, double 6, or double 1 (treated like double 6)
         bool winningRoll = d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1) || (d1 == 6 && d2 == 6);
         if (winningRoll) {
           activeP.finished = true;
@@ -183,6 +190,7 @@ class GameNotifier extends ChangeNotifier {
       bool isQualifyingRoll = (d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1) || (d1 == 6 && d2 == 6));
 
       if (activeP.finished && !activeP.isHelper) {
+        // Already finished but not a helper yet - needs a 6, double 6, or double 1 to become helper
         if (isQualifyingRoll) {
           activeP.isHelper = true;
           dicePool = [];
@@ -413,7 +421,8 @@ class GameNotifier extends ChangeNotifier {
     bool breakingChokePoint = sameColorAtCurrent == 1 && isCurrentSecondSafe;
 
     // Check if piece is behind second stop and will pass it without landing
-    int distToSecondStop = (mySecondStop - currentPos) % 52;
+    // Use (value + 52) % 52 to handle negative values correctly (same as C# backend)
+    int distToSecondStop = (mySecondStop - currentPos + 52) % 52;
     bool isBehindSecondStop = distToSecondStop > 0 && distToSecondStop <= 6;
     bool willPassSecondStop = isBehindSecondStop && distToSecondStop < move.dieValue && targetState == PieceState.board;
 
@@ -422,18 +431,35 @@ class GameNotifier extends ChangeNotifier {
     if (currentState == PieceState.homeStretch) {
       isPastSecondStop = true; // In home stretch, definitely passed second stop
     } else if (currentState == PieceState.board) {
-      int distFromSecondStop = (currentPos - mySecondStop) % 52;
+      int distFromSecondStop = (currentPos - mySecondStop + 52) % 52;
       // Second stop is 3 cells before home stretch entry
       if (distFromSecondStop > 0 && distFromSecondStop <= 3) {
         isPastSecondStop = true;
       }
     }
 
+    // Check if piece is AT the second stop (the border block position)
+    bool pieceAtSecondStop = currentState == PieceState.board && currentPos == mySecondStop;
+
+    // Check if moving this piece from second stop will enter home stretch or home
+    bool movingFromSecondStopIntoHome = pieceAtSecondStop && (targetState == PieceState.homeStretch || targetState == PieceState.home);
+
     // Count pieces at second stop for block assessment
     int piecesAtSecondStop = players[myId].pieces.where((p) => p.state == PieceState.board && p.pos == mySecondStop).length;
 
     // Count pieces at first stop for block assessment
     int piecesAtFirstStop = players[myId].pieces.where((p) => p.state == PieceState.board && p.pos == myFirstStop).length;
+
+    // Count pieces NOT at second stop and not past it (these are the ones that need attention)
+    int piecesNeedingHelp = players[myId].pieces.where((p) {
+      if (p.state == PieceState.home || p.state == PieceState.homeStretch) return false;
+      if (p.state == PieceState.board) {
+        // Use (value + 52) % 52 to handle negative values correctly (same as C# backend)
+        int distFromStop = (p.pos - mySecondStop + 52) % 52;
+        if (distFromStop <= 3) return false; // At or past second stop
+      }
+      return true;
+    }).length;
 
     // Check if any piece is on opponent start borders
     bool hasPieceOnOpponentStart = false;
@@ -465,7 +491,8 @@ class GameNotifier extends ChangeNotifier {
         if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
         for (var pc in p.pieces) {
           if (pc.state == PieceState.board) {
-            int distBehind = (currentPos - pc.pos) % 52;
+            // Use (value + 52) % 52 to handle negative values correctly (same as C# backend)
+            int distBehind = (currentPos - pc.pos + 52) % 52;
             if (distBehind > 0 && distBehind <= 6) {
               currentlyInDanger = true;
               if (distBehind < minThreatDist) minThreatDist = distBehind;
@@ -480,10 +507,11 @@ class GameNotifier extends ChangeNotifier {
         if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
         for (var pc in p.pieces) {
           if (pc.state == PieceState.board) {
-            int distToTarget = (targetPos - pc.pos) % 52;
+            // Use (value + 52) % 52 to handle negative values correctly (same as C# backend)
+            int distToTarget = (targetPos - pc.pos + 52) % 52;
             if (distToTarget > 0 && distToTarget <= 6) targetInDanger = true;
 
-            int distAhead = (pc.pos - targetPos) % 52;
+            int distAhead = (pc.pos - targetPos + 52) % 52;
             if (distAhead > 0 && distAhead <= 6) targetIsChasing = true;
           }
         }
@@ -495,6 +523,32 @@ class GameNotifier extends ChangeNotifier {
     // Penalty for passing second stop without landing on it
     if (willPassSecondStop) {
       score -= 100000; // Extremely high penalty - NEVER pass second stop without landing
+    }
+
+    // 🔥 ENHANCED: Prevent moving from second stop into home stretch/home
+    // The second stop is the critical border block position. Moving into home
+    // from there should be DEPRIORITIZED in favor of moving other pieces that
+    // are exposed or need to be freed.
+    if (movingFromSecondStopIntoHome) {
+      score -= 200000; // Massive penalty - never sacrifice the border block
+    }
+
+    // 🔥 ENHANCED: Strong penalty for moving ANY piece at second stop
+    if (pieceAtSecondStop && targetState != PieceState.home) {
+      // If other pieces need help (exposed, in yard, in prison), strongly prefer them
+      if (piecesNeedingHelp > 0) {
+        score -= 120000 + (piecesNeedingHelp * 10000);
+      }
+    }
+
+    // 🔥 ENHANCED: Boost for freeing pieces that need help when we have pieces at second stop
+    if (piecesNeedingHelp > 0) {
+      // Boost for moving pieces that are NOT at/past second stop
+      bool moveHelpsNeedy = !pieceAtSecondStop && !isPastSecondStop;
+      if (moveHelpsNeedy) {
+        score += 50000; // Strong bonus for moving needy pieces
+        if (currentlyInDanger) score += 30000; // Extra if they're in danger
+      }
     }
 
     // Prioritize freeing prisoners on special rolls
@@ -565,9 +619,10 @@ class GameNotifier extends ChangeNotifier {
           // Check if remaining dice can reach another opponent from target position
           for (var p in players) {
             if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
-            for (var pc in p.pieces) {
+              for (var pc in p.pieces) {
               if (pc.state == PieceState.board) {
-                int distToOpponent = (pc.pos - targetPos) % 52;
+                // Use (value + 52) % 52 to handle negative values correctly (same as C# backend)
+                int distToOpponent = (pc.pos - targetPos + 52) % 52;
                 if (distToOpponent > 0 && distToOpponent <= remainingDiceSum) {
                   score += 10000; // Bonus for setting up multi-dice hit
                 }
@@ -627,7 +682,8 @@ class GameNotifier extends ChangeNotifier {
         if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
         for (var pc in p.pieces) {
           if (pc.state == PieceState.board) {
-            int dist = (pc.pos - targetPos) % 52;
+            // Use (value + 52) % 52 to handle negative values correctly (same as C# backend)
+            int dist = (pc.pos - targetPos + 52) % 52;
             if (dist > 0 && dist <= 6) futureHitPotential++;
           }
         }

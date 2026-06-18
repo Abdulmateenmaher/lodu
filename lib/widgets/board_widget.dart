@@ -163,11 +163,14 @@ class _YardCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = kColors[playerId]!.main;
+    // Lock icon shows for "unscathed" players - those who have never hit
+    // an opponent piece. Once they hit at least one piece (hasKilled = true),
+    // the lock permanently hides. The lock also shows on re-completion of all
+    // pieces to home for unscathed players (finished = true, hasKilled = false).
     final showLock = game.players.isNotEmpty &&
         game.phase == GamePhase.play &&
-        (game.players[playerId].finished ||
-            (!game.players[playerId].hasKilled &&
-                !game.players[playerId].isHelper));
+        !game.players[playerId].isHelper &&
+        !game.players[playerId].hasKilled;
     final partnerId = (playerId + 2) % 4;
     final showHelper = game.players.isNotEmpty &&
         game.phase == GamePhase.play &&
