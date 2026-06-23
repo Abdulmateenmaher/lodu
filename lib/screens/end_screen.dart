@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common/confetti.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/common/gradient_button.dart';
+import '../widgets/common/glowing_grid_background.dart';
 import 'history_screen.dart';
 
 class EndScreen extends StatelessWidget {
@@ -27,7 +28,9 @@ class EndScreen extends StatelessWidget {
       backgroundColor: AppTheme.bgDeep,
       body: Stack(
         children: [
-          // Confetti background
+          // Glowing grid background
+          const Positioned.fill(child: GlowingGridBackground()),
+          // Confetti overlay
           const Positioned.fill(child: ConfettiOverlay()),
           SafeArea(
             child: Padding(

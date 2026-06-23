@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/common/gradient_button.dart';
 import '../widgets/common/player_avatar.dart';
+import '../widgets/common/glowing_grid_background.dart';
 import 'history_screen.dart';
 import 'online_setup_screen.dart';
 import 'settings_sheet.dart';
@@ -24,8 +25,6 @@ class _SetupScreenState extends State<SetupScreen>
   final List<TextEditingController> _nameCtrl =
       List.generate(4, (i) => TextEditingController());
   late GameSettings _settings;
-  late AnimationController _logoCtrl;
-  late Animation<double> _logoAnim;
   late AnimationController _enterCtrl;
   late Animation<double> _enterAnim;
   bool _muted = false;
@@ -38,11 +37,6 @@ class _SetupScreenState extends State<SetupScreen>
       _nameCtrl[i].text = kColors[i]!.name;
     }
     _muted = AudioService.isMuted;
-    _logoCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
-    _logoAnim = Tween<double>(begin: -3, end: 3).animate(_logoCtrl);
     _enterCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -53,7 +47,6 @@ class _SetupScreenState extends State<SetupScreen>
 
   @override
   void dispose() {
-    _logoCtrl.dispose();
     _enterCtrl.dispose();
     for (final c in _nameCtrl) c.dispose();
     super.dispose();
@@ -83,7 +76,7 @@ class _SetupScreenState extends State<SetupScreen>
       backgroundColor: AppTheme.bgDeep,
       body: Stack(
         children: [
-          const Positioned.fill(child: _GridBackdrop()),
+          const Positioned.fill(child: GlowingGridBackground()),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -142,69 +135,21 @@ class _SetupScreenState extends State<SetupScreen>
   }
 
   Widget _buildLogo() {
-    return AnimatedBuilder(
-      animation: _logoAnim,
-      builder: (_, child) =>
-          Transform.translate(offset: Offset(0, _logoAnim.value), child: child),
-      child: Column(
-        children: [
-          Container(
-            width: 130,
-            height: 130,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const RadialGradient(
-                colors: [Color(0xFF1e293b), Color(0xFF0a0f1e)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accentBlue.withValues(alpha: 0.35),
-                  blurRadius: 30,
-                  spreadRadius: 2,
-                ),
-              ],
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.08),
-                width: 1.5,
-              ),
-            ),
-            child: ClipOval(
-              child: Image.asset(
-                'assets/images/starting.png',
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Icon(
-                  Icons.casino,
-                  size: 64,
-                  color: AppTheme.accentBlue,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppTheme.gap14),
-          ShaderMask(
-            shaderCallback: (b) => AppTheme.titleGradient.createShader(b),
-            child: const Text(
-              'وطني چکه',
-              style: TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 6,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'CLASSIC BOARD GAME',
+    return Column(
+      children: [
+        ShaderMask(
+          shaderCallback: (b) => AppTheme.titleGradient.createShader(b),
+          child: const Text(
+            'وطني چکه',
             style: TextStyle(
-              color: AppTheme.textSubtle,
-              fontSize: 11,
-              letterSpacing: 3,
-              fontWeight: FontWeight.w700,
+              fontSize: 40,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: 6,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -316,29 +261,6 @@ class _SetupScreenState extends State<SetupScreen>
   }
 }
 
-class _GridBackdrop extends StatelessWidget {
-  const _GridBackdrop();
-  @override
-  Widget build(BuildContext context) => CustomPaint(painter: _GridBackdropPainter());
-}
-
-class _GridBackdropPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = AppTheme.border.withValues(alpha: 0.4)
-      ..strokeWidth = 0.5;
-    for (double x = 0; x < size.width; x += 40) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
-    }
-    for (double y = 0; y < size.height; y += 40) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
-}
 
 class _CircleIconBtn extends StatelessWidget {
   final IconData icon;

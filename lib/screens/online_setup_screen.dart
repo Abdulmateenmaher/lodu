@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/common/gradient_button.dart';
 import '../widgets/common/status_pill.dart';
+import '../widgets/common/glowing_grid_background.dart';
 import 'online_game_screen.dart';
 
 const String _kServerUrl = String.fromEnvironment(
@@ -88,32 +89,47 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
         }
         return Scaffold(
           backgroundColor: AppTheme.bgDeep,
-          appBar: AppBar(
-            backgroundColor: AppTheme.bgPanel,
-            title: const Text(
-              'Play Online',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 14),
-                child: _ConnectionPill(connected: _notifier.isHubConnected),
+          body: Stack(
+            children: [
+              const Positioned.fill(child: GlowingGridBackground()),
+              Column(
+                children: [
+                  _buildAppBar(ctx),
+                  Expanded(
+                    child:
+                        _notifier.onlinePhase == OnlinePhase.connecting || _isConnecting
+                            ? _ConnectingState(serverUrl: _kServerUrl)
+                            : _buildBody(ctx),
+                  ),
+                ],
               ),
             ],
           ),
-          body:
-              _notifier.onlinePhase == OnlinePhase.connecting || _isConnecting
-                  ? _ConnectingState(serverUrl: _kServerUrl)
-                  : _buildBody(ctx),
         );
       },
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
+      backgroundColor: AppTheme.bgPanel,
+      title: const Text(
+        'Play Online',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 14),
+          child: _ConnectionPill(connected: _notifier.isHubConnected),
+        ),
+      ],
     );
   }
 

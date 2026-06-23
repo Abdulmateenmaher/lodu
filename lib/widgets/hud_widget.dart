@@ -6,7 +6,6 @@ import '../logic/game_notifier.dart';
 import '../theme/app_theme.dart';
 import 'dice_widget.dart';
 import 'dice_cell_widget.dart';
-import 'common/status_pill.dart';
 
 class HudWidget extends StatelessWidget {
   final bool flipped;
@@ -30,7 +29,6 @@ class HudWidget extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                // Glass-like dark panel with strong color border
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -65,10 +63,9 @@ class HudWidget extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            // FIX 5: Only show player name label
             if (game.players.isNotEmpty) _PlayerLabel(game: game),
             _DiceRow(game: game),
-            const SizedBox(height: 10),
-            _ControlRow(game: game),
           ],
         ),
       ),
@@ -76,7 +73,7 @@ class HudWidget extends StatelessWidget {
   }
 }
 
-// ── Player Label ─────────────────────────────────────────────────────────────
+// ── Player Label (FIX 5: Simplified - only name, no extras) ──
 
 class _PlayerLabel extends StatelessWidget {
   final GameNotifier game;
@@ -92,47 +89,27 @@ class _PlayerLabel extends StatelessWidget {
         : player.name;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.7),
-                  blurRadius: 6,
-                ),
-              ],
+      child: Text(
+        name,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+          shadows: [
+            Shadow(
+              color: color.withValues(alpha: 0.6),
+              blurRadius: 6,
             ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            name,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
-              shadows: [
-                Shadow(
-                  color: color.withValues(alpha: 0.6),
-                  blurRadius: 6,
-                ),
-              ],
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          ],
+        ),
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
 }
 
-// ── Dice Row ──────────────────────────────────────────────────────────────────
+// ── Dice Row ───────────────────────────────────────────────────────
 
 class _DiceRow extends StatelessWidget {
   final GameNotifier game;
@@ -164,7 +141,7 @@ class _DiceRow extends StatelessWidget {
   }
 }
 
-// ── Rolling Die (cycles faces) ────────────────────────────────────────────────
+// ── Rolling Die (cycles faces) ─────────────────────────────────────
 
 class _RollingDie extends StatefulWidget {
   const _RollingDie();
@@ -202,89 +179,4 @@ class _RollingDieState extends State<_RollingDie>
   @override
   Widget build(BuildContext context) =>
       DiceWidget(value: _val, isRolling: true, size: 48);
-}
-
-// ── Control Row ───────────────────────────────────────────────────────────────
-
-class _ControlRow extends StatelessWidget {
-  final GameNotifier game;
-  const _ControlRow({required this.game});
-
-  @override
-  Widget build(BuildContext context) {
-    final actId = game.activePlayerId;
-    final actPlayer = game.players[actId];
-
-    if (actPlayer.isAI) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _PulsingCpuIcon(),
-          const SizedBox(width: 6),
-          Text(
-            'Thinking...',
-            style: TextStyle(
-              color: Color(0xFF94a3b8),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      );
-    }
-
-    final canTap = game.canRoll && !game.isRolling && game.dicePool.isEmpty;
-    return AnimatedOpacity(
-      duration: AppTheme.durMed,
-      opacity: canTap ? 1.0 : 0.55,
-      child: StatusPill(
-        text: canTap ? 'Tap HUD to roll' : 'Pick a piece to move',
-        color: kColors[actId]!.main,
-        icon: canTap ? Icons.touch_app : Icons.swipe,
-      ),
-    );
-  }
-}
-
-// ── Pulsing CPU Icon ──────────────────────────────────────────────────────────
-
-class _PulsingCpuIcon extends StatefulWidget {
-  const _PulsingCpuIcon();
-
-  @override
-  State<_PulsingCpuIcon> createState() => _PulsingCpuIconState();
-}
-
-class _PulsingCpuIconState extends State<_PulsingCpuIcon>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-    _anim = Tween<double>(begin: 0.3, end: 1.0).animate(_ctrl);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _anim,
-      child: const Icon(
-        Icons.memory,
-        color: Color(0xFF94a3b8),
-        size: 18,
-      ),
-    );
-  }
 }

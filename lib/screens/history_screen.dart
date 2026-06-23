@@ -5,6 +5,7 @@ import '../logic/game_notifier.dart';
 import '../models/match_record.dart';
 import '../services/audio_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/glowing_grid_background.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -23,73 +24,82 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.bgDeep,
-      appBar: AppBar(
-        backgroundColor: AppTheme.bgPanel,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: const BoxDecoration(
-                gradient: AppTheme.trophyGradient,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.emoji_events_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Match History',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 17,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '${history.length} matches',
-              style: const TextStyle(
-                color: AppTheme.textMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppTheme.border),
-        ),
-      ),
-      body: Column(
+      body: Stack(
         children: [
-          if (history.isNotEmpty) _buildFilterBar(),
-          Expanded(
-            child: history.isEmpty
-                ? const _EmptyState()
-                : (filtered.isEmpty
-                    ? const _NoMatchesState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final record =
-                              filtered[filtered.length - 1 - index];
-                          return _MatchCard(
-                            record: record,
-                            matchNumber: history.length -
-                                history.indexOf(record),
-                          );
-                        },
-                      )),
+          const Positioned.fill(child: GlowingGridBackground()),
+          Column(
+            children: [
+              _buildAppBar(history),
+              if (history.isNotEmpty) _buildFilterBar(),
+              Expanded(
+                child: history.isEmpty
+                    ? const _EmptyState()
+                    : (filtered.isEmpty
+                        ? const _NoMatchesState()
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final record =
+                                  filtered[filtered.length - 1 - index];
+                              return _MatchCard(
+                                record: record,
+                                matchNumber: history.length -
+                                    history.indexOf(record),
+                              );
+                            },
+                          )),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(List<MatchRecord> history) {
+    return AppBar(
+      backgroundColor: AppTheme.bgPanel,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      title: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+              gradient: AppTheme.trophyGradient,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.emoji_events_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Match History',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 17,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '${history.length} matches',
+            style: const TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: AppTheme.border),
       ),
     );
   }

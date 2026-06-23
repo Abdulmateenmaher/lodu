@@ -4,6 +4,7 @@ import '../logic/game_notifier.dart';
 import '../theme/app_theme.dart';
 import '../widgets/board_widget.dart';
 import '../widgets/common/animated_toast.dart';
+import '../widgets/common/glowing_grid_background.dart';
 import '../widgets/hud_widget.dart';
 
 const _yardAlignments = [
@@ -21,55 +22,53 @@ class GameScreen extends StatelessWidget {
     final game = context.watch<GameNotifier>();
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/images/bg.png'),
-              fit: BoxFit.cover,
+      body: Stack(
+        children: [
+          // Glowing grid background
+          const Positioned.fill(child: GlowingGridBackground()),
+          SafeArea(
+            child: Stack(
+              children: [
+                // Board
+                Center(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final size = constraints.maxWidth < constraints.maxHeight
+                          ? constraints.maxWidth
+                          : constraints.maxHeight;
+                      return SizedBox(
+                        width: size,
+                        height: size,
+                        child: const BoardWidget(),
+                      );
+                    },
+                  ),
+                ),
+
+                // Animated HUD overlay
+                const _HudOverlay(),
+
+                // Leave button
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _LeaveButton(
+                    onTap: () => _confirmLeave(context, game),
+                  ),
+                ),
+
+                // Toast
+                if (game.toast != null)
+                  Positioned(
+                    top: 52,
+                    left: 0,
+                    right: 0,
+                    child: Center(child: AnimatedToast(message: game.toast!)),
+                  ),
+              ],
             ),
           ),
-          child: Stack(
-            children: [
-              // Board
-              Center(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final size = constraints.maxWidth < constraints.maxHeight
-                        ? constraints.maxWidth
-                        : constraints.maxHeight;
-                    return SizedBox(
-                      width: size,
-                      height: size,
-                      child: const BoardWidget(),
-                    );
-                  },
-                ),
-              ),
-
-              // Animated HUD overlay
-              const _HudOverlay(),
-
-              // Leave button
-              Positioned(
-                top: 8,
-                right: 8,
-                child: _LeaveButton(
-                  onTap: () => _confirmLeave(context, game),
-                ),
-              ),
-
-              // Toast
-              if (game.toast != null)
-                Positioned(
-                  top: 52,
-                  left: 0,
-                  right: 0,
-                  child: Center(child: AnimatedToast(message: game.toast!)),
-                ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -229,7 +228,12 @@ class _HudOverlay extends StatelessWidget {
       duration: AppTheme.durSlow,
       curve: AppTheme.curveEmphasized,
       alignment: alignment,
-      child: Padding(padding: _pad(alignment), child: const HudWidget()),
+      // FIX 5: Flip HUD for Green (1) and Yellow (2) — they're at the top of the board
+      // so their HUD needs to be rotated 180° to face the center
+      child: Padding(
+        padding: _pad(alignment),
+        child: HudWidget(flipped: actId == 1 || actId == 2),
+      ),
     );
   }
 

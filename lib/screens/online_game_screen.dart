@@ -8,6 +8,7 @@ import '../models/game_models.dart';
 import '../models/online_models.dart';
 import '../widgets/board_widget.dart';
 import '../widgets/dice_cell_widget.dart';
+import '../widgets/common/glowing_grid_background.dart';
 import '../constants/board_constants.dart';
 
 const _yardAlignments = [
@@ -51,112 +52,127 @@ class _LobbyScreen extends StatelessWidget {
   final OnlineGameNotifier notifier;
   const _LobbyScreen({required this.notifier});
 
+  PreferredSizeWidget _buildAppBar(OnlineGameNotifier notifier, BuildContext context) {
+    return AppBar(
+      backgroundColor: const Color(0xFF111827),
+      title: Text('Room  •  ${notifier.isHost ? "Host" : "Guest"}',
+          style: const TextStyle(color: Colors.white)),
+      leading: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white),
+        onPressed: () async {
+          await notifier.disconnect();
+          if (context.mounted) Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final room = notifier.room!;
     return Scaffold(
       backgroundColor: const Color(0xFF0a0f1e),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF111827),
-        title: Text('Room  •  ${notifier.isHost ? "Host" : "Guest"}',
-            style: const TextStyle(color: Colors.white)),
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () async {
-            await notifier.disconnect();
-            if (context.mounted) Navigator.pop(context);
-          },
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Room ID card
-            _Card(
-              child: Column(children: [
-                const Text('Room ID', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                const SizedBox(height: 4),
-                Text(room.roomId,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 6)),
-                const SizedBox(height: 4),
-                Text('Host: ${room.hostName}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13)),
-              ]),
-            ),
-            const SizedBox(height: 16),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: GlowingGridBackground()),
+          Column(
+            children: [
+              _buildAppBar(notifier, context),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Room ID card
+                      _Card(
+                        child: Column(children: [
+                          const Text('Room ID', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          const SizedBox(height: 4),
+                          Text(room.roomId,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 6)),
+                          const SizedBox(height: 4),
+                          Text('Host: ${room.hostName}',
+                              style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                        ]),
+                      ),
+                      const SizedBox(height: 16),
 
-            // Player slots
-            const Text('Players',
-                style: TextStyle(
-                    color: Color(0xFF94a3b8),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5)),
-            const SizedBox(height: 8),
-            ...room.players.where((p) => p.isActive).map((p) => _PlayerTile(
-                  player: p,
-                  isMe: p.id == notifier.mySlot,
-                )),
+                      // Player slots
+                      const Text('Players',
+                          style: TextStyle(
+                              color: Color(0xFF94a3b8),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.5)),
+                      const SizedBox(height: 8),
+                      ...room.players.where((p) => p.isActive).map((p) => _PlayerTile(
+                            player: p,
+                            isMe: p.id == notifier.mySlot,
+                          )),
 
-            const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-            // Host: pending join requests
-            if (notifier.isHost && notifier.pendingRequests.isNotEmpty) ...[
-              const Text('Join Requests',
-                  style: TextStyle(
-                      color: Color(0xFFfacc15),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.5)),
-              const SizedBox(height: 8),
-              ...notifier.pendingRequests.map((req) => _JoinRequestTile(
-                    request: req,
-                    onApprove: () => notifier.approveJoin(req.connId),
-                    onDecline: () => notifier.declineJoin(req.connId),
-                  )),
-              const SizedBox(height: 16),
-            ],
+                      // Host: pending join requests
+                      if (notifier.isHost && notifier.pendingRequests.isNotEmpty) ...[
+                        const Text('Join Requests',
+                            style: TextStyle(
+                                color: Color(0xFFfacc15),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.5)),
+                        const SizedBox(height: 8),
+                        ...notifier.pendingRequests.map((req) => _JoinRequestTile(
+                              request: req,
+                              onApprove: () => notifier.approveJoin(req.connId),
+                              onDecline: () => notifier.declineJoin(req.connId),
+                            )),
+                        const SizedBox(height: 16),
+                      ],
 
-            // Guest: request status
-            if (!notifier.isHost) ...[
-              if (notifier.joinRequestStatus == 'declined')
-                const _StatusBadge(
-                    'Request declined by host', Colors.red)
-              else if (notifier.joinRequestStatus == 'waiting')
-                const _StatusBadge(
-                    'Waiting for host to approve...', Color(0xFFfacc15)),
-              const SizedBox(height: 12),
-            ],
+                      // Guest: request status
+                      if (!notifier.isHost) ...[
+                        if (notifier.joinRequestStatus == 'declined')
+                          const _StatusBadge(
+                              'Request declined by host', Colors.red)
+                        else if (notifier.joinRequestStatus == 'waiting')
+                          const _StatusBadge(
+                              'Waiting for host to approve...', Color(0xFFfacc15)),
+                        const SizedBox(height: 12),
+                      ],
 
-            const Spacer(),
+                      const Spacer(),
 
-            if (notifier.isHost)
-              ElevatedButton.icon(
-                onPressed: notifier.startGame,
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Start Game',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563eb),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                      if (notifier.isHost)
+                        ElevatedButton.icon(
+                          onPressed: notifier.startGame,
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('Start Game',
+                              style:
+                                  TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563eb),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                        )
+                      else
+                        const Center(
+                            child: Text('Waiting for host to start…',
+                                style: TextStyle(color: Colors.white54))),
+                    ],
+                  ),
                 ),
-              )
-            else
-              const Center(
-                  child: Text('Waiting for host to start…',
-                      style: TextStyle(color: Colors.white54))),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -414,72 +430,69 @@ class _OnlineGameBody extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/images/bg.png'),
-              fit: BoxFit.cover,
-            ),
-          ),
-          child: Stack(
-            children: [
-              // Board
-              Center(
-                child: LayoutBuilder(builder: (ctx, c) {
-                  final size =
-                      c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight;
-                  return SizedBox(
-                      width: size,
-                      height: size,
-                      child: const BoardWidget());
-                }),
-              ),
-
-              // HUD overlay — animates to active player corner
-              AnimatedAlign(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeInOut,
-                alignment: _yardAlignments[actId],
-                child: Padding(
-                  padding: _pad(_yardAlignments[actId]),
-                  child: _OnlineHud(notifier: notifier, proxy: proxy),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: GlowingGridBackground()),
+          SafeArea(
+            child: Stack(
+              children: [
+                // Board
+                Center(
+                  child: LayoutBuilder(builder: (ctx, c) {
+                    final size =
+                        c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight;
+                    return SizedBox(
+                        width: size,
+                        height: size,
+                        child: const BoardWidget());
+                  }),
                 ),
-              ),
 
-              // Leave button
-              Positioned(
-                top: 8,
-                right: 8,
-                child: GestureDetector(
-                  onTap: () => _confirmLeave(context),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xCC111827),
-                      borderRadius: BorderRadius.circular(10),
-                      border:
-                          Border.all(color: const Color(0xFF1f2937)),
-                    ),
-                    child: const Icon(Icons.exit_to_app_rounded,
-                        color: Color(0xFFef4444), size: 20),
+                // HUD overlay — animates to active player corner
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOut,
+                  alignment: _yardAlignments[actId],
+                  child: Padding(
+                    padding: _pad(_yardAlignments[actId]),
+                    child: _OnlineHud(notifier: notifier, proxy: proxy),
                   ),
                 ),
-              ),
 
-              // Toast
-              if (game.toast != null)
+                // Leave button
                 Positioned(
-                  top: 52,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                      child: _ToastBadge(message: game.toast!)),
+                  top: 8,
+                  right: 8,
+                  child: GestureDetector(
+                    onTap: () => _confirmLeave(context),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC111827),
+                        borderRadius: BorderRadius.circular(10),
+                        border:
+                            Border.all(color: const Color(0xFF1f2937)),
+                      ),
+                      child: const Icon(Icons.exit_to_app_rounded,
+                          color: Color(0xFFef4444), size: 20),
+                    ),
+                  ),
                 ),
-            ],
+
+                // Toast
+                if (game.toast != null)
+                  Positioned(
+                    top: 52,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                        child: _ToastBadge(message: game.toast!)),
+                  ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -749,35 +762,40 @@ class _OnlineEndScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0a0f1e),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.emoji_events,
-                size: 80, color: Colors.amber),
-            const SizedBox(height: 16),
-            Text(
-              '${winner?.name.isNotEmpty == true ? winner!.name : 'Player'} Wins!',
-              style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white),
+      body: Stack(
+        children: [
+          const Positioned.fill(child: GlowingGridBackground()),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events,
+                    size: 80, color: Colors.amber),
+                const SizedBox(height: 16),
+                Text(
+                  '${winner?.name.isNotEmpty == true ? winner!.name : 'Player'} Wins!',
+                  style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  onPressed: () async {
+                    await notifier.disconnect();
+                    if (context.mounted) {
+                      Navigator.popUntil(context, (r) => r.isFirst);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563eb)),
+                  child: const Text('Back to Menu',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () async {
-                await notifier.disconnect();
-                if (context.mounted) {
-                  Navigator.popUntil(context, (r) => r.isFirst);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563eb)),
-              child: const Text('Back to Menu',
-                  style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

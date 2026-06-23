@@ -240,6 +240,8 @@ List<AiMove> getAllValidMoves(
   GameSettings settings,
 ) {
   final List<AiMove> moves = [];
+  final List<AiMove> combinedMoves = [];
+  
   // Single die moves
   for (int i = 0; i < pool.length; i++) {
     for (final pc in player.pieces) {
@@ -260,8 +262,10 @@ List<AiMove> getAllValidMoves(
       }
     }
   }
-  // Combined moves for pairs only if no single moves
-  if (moves.isEmpty && pool.length >= 2) {
+  
+  // 🔥 ENHANCED: Combined moves for pairs - ALWAYS generate these alongside singles
+  // AI should consider sum-of-dice moves as alternatives, not just fallback
+  if (pool.length >= 2) {
     for (int i = 0; i < pool.length; i++) {
       for (int j = i + 1; j < pool.length; j++) {
         int sum = pool[i] + pool[j];
@@ -277,7 +281,7 @@ List<AiMove> getAllValidMoves(
             settings: settings,
           );
           if (dest != null) {
-            moves.add(
+            combinedMoves.add(
               AiMove(piece: pc, target: dest, dieIndices: [i, j], dieValue: sum),
             );
           }
@@ -285,5 +289,14 @@ List<AiMove> getAllValidMoves(
       }
     }
   }
-  return moves;
+  
+  // If no single moves exist, use combined moves
+  // If single moves exist, also include combined moves for AI evaluation
+  if (moves.isEmpty) {
+    return combinedMoves;
+  } else {
+    // Include combined moves alongside singles for richer AI evaluation
+    moves.addAll(combinedMoves);
+    return moves;
+  }
 }
