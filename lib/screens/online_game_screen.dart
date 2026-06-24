@@ -338,25 +338,64 @@ class _OnlinePlayScreenState extends State<_OnlinePlayScreen> {
 class _OnlineGameProxy extends GameNotifier {
   final OnlineGameNotifier _online;
 
+  // Track last synced values to avoid redundant rebuilds (fixes flickering)
+  int _lastTurnSlot = -1;
+  List<int> _lastDicePool = [];
+  bool _lastCanRoll = false;
+  String _lastToast = '';
+  int _lastPhaseHash = 0;
+
   _OnlineGameProxy(this._online) {
     _online.addListener(_sync);
     _sync();
   }
 
   void _sync() {
-    phase = _online.onlinePhase == OnlinePhase.playing
+    final newPhase = _online.onlinePhase == OnlinePhase.playing
         ? GamePhase.play
         : GamePhase.end;
+    final newDicePool = List<int>.from(_online.dicePool);
+    final newCanRoll = _online.canRoll && _online.isMyTurn;
+    final newTurnSlot = _online.turnSlot;
+    final newToast = _online.toast ?? '';
+    final toastCleared = newToast.isEmpty && _lastToast.isNotEmpty;
+
+    // Skip if nothing meaningful changed (AI processing causes rapid GameState bursts)
+    final phaseHash = newPhase.index;
+    final diceChanged = _listCastDiffers(_lastDicePool, newDicePool);
+    final turnChanged = _lastTurnSlot != newTurnSlot;
+    final canRollChanged = _lastCanRoll != newCanRoll;
+    final phaseChanged = _lastPhaseHash != phaseHash;
+    final toastChanged = _lastToast != newToast && (newToast.isNotEmpty || toastCleared);
+
+    _lastTurnSlot = newTurnSlot;
+    _lastDicePool = newDicePool;
+    _lastCanRoll = newCanRoll;
+    _lastPhaseHash = phaseHash;
+    _lastToast = newToast;
+
+    if (!diceChanged && !turnChanged && !canRollChanged && !phaseChanged && !toastChanged) {
+      return; // nothing meaningful — skip notifyListeners to avoid flicker
+    }
+
+    phase = newPhase;
     players = _online.players;
-    dicePool = List<int>.from(_online.dicePool);
-    canRoll = _online.canRoll && _online.isMyTurn;
-    turnSlot = _online.turnSlot;
+    dicePool = newDicePool;
+    canRoll = newCanRoll;
+    turnSlot = newTurnSlot;
     settings = _online.settings;
     toast = _online.toast;
     isRolling = false;
-    // Use server-computed selectedDieIndex
     selectedDieIndex = _online.room?.selectedDieIndex;
     notifyListeners();
+  }
+
+  bool _listCastDiffers(List<int> a, List<int> b) {
+    if (a.length != b.length) return true;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return true;
+    }
+    return false;
   }
 
   // ── Actions forwarded to server ──
