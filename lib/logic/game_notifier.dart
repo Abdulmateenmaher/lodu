@@ -19,6 +19,7 @@ class GameNotifier extends ChangeNotifier {
   int turnSlot = 0;
   List<int> dicePool = [];
   int consecutiveExtra = 0;
+  List<int> lastDiceResults = [];
   bool canRoll = false;
   int? selectedDieIndex;
   bool isRolling = false;
@@ -70,9 +71,17 @@ class GameNotifier extends ChangeNotifier {
       name: configs[id]['name'] as String? ?? '',
       pieces: List.generate(4, (pId) => Piece(id: pId, color: id)),
     ));
-    turnSlot = activeIds[0];
+
+    // Find first valid player
+    int firstSlot = activeIds[0];
+    while (!_isValidTurn(firstSlot, players)) {
+      firstSlot = (firstSlot + 1) % 4;
+    }
+    turnSlot = firstSlot;
+
     dicePool = [];
     consecutiveExtra = 0;
+    lastDiceResults = [];
     canRoll = true;
     selectedDieIndex = null;
     _aiTurnActive = false;
@@ -149,8 +158,8 @@ class GameNotifier extends ChangeNotifier {
 
       final allHome = activeP.pieces.every((pc) => pc.state == PieceState.home);
       if (allHome && !activeP.finished) {
-        dicePool = [d1, d2];
-        isRolling = false; players = newPlayers; notifyListeners();
+        dicePool = (settings.diceCount == 1) ? [d1] : [d1, d2];
+        isRolling = false; players = newPlayers; lastDiceResults = [d1, d2]; notifyListeners();
         Timer(const Duration(milliseconds: 400), () {
           bool winningRoll = d1 == 6 || d2 == 6 || (d1 == 1 && d2 == 1) || (d1 == 6 && d2 == 6);
           if (winningRoll) {
@@ -189,22 +198,38 @@ class GameNotifier extends ChangeNotifier {
       bool isSixOrDoubleOne = (d1 == 6 || d2 == 6 || isDoubleOne);
       bool isGlobalFirstSix = !matchFirstSixRolled && isSixOrDoubleOne;
 
-      if (isGlobalFirstSix) {
+      if (settings.diceCount == 1) {
+        bool isBlost = settings.blostOnDoubleFour && d1 == 4;
+        if (isBlost && activeP.hasKilled && activeP.pieces.any((p) => p.state == PieceState.board)) {
+          newPool.addAll([6, 6, 6]); extra = true;
+          AudioService.play('six_four');
+        } else if (d1 == 6) { newPool.addAll([6]); extra = true; }
+        else { newPool.addAll([d1]); }
+      } else if (isGlobalFirstSix) {
         matchFirstSixRolled = true;
         bool hasFour = (d1 == 6 && d2 == 4) || (d2 == 6 && d1 == 4);
+        bool isBlost = settings.blostOnDoubleFour && d1 == 4 && d2 == 4;
         newPool.clear();
-        if (hasFour) { newPool.addAll([6, 6, 6, 6, 4]); AudioService.play('six_four'); }
+        if (isBlost && activeP.hasKilled && activeP.pieces.any((p) => p.state == PieceState.board)) {
+          newPool.addAll([6, 6, 6, 6]); extra = true;
+          AudioService.play('six_four');
+        } else if (hasFour) { newPool.addAll([6, 6, 6, 6, 4]); AudioService.play('six_four'); }
         else if (isDoubleSix) { newPool.addAll([6, 6, 6]); extra = true; }
         else if (isDoubleOne) { newPool.addAll([6, 6, 6]); extra = true; }
         else { newPool.addAll([d1, d2, 6]); }
       } else {
-        if (settings.doubleSixBonus && (isDoubleSix || isDoubleOne)) { extra = consecutiveExtra < 3; newPool.addAll([6, 6]); }
+        bool isBlost = settings.blostOnDoubleFour && d1 == 4 && d2 == 4;
+        if (isBlost && activeP.hasKilled && activeP.pieces.any((p) => p.state == PieceState.board)) {
+          newPool.addAll([6, 6, 6, 6]); extra = consecutiveExtra < 3;
+          AudioService.play('six_four');
+        } else if (settings.doubleSixBonus && (isDoubleSix || isDoubleOne)) { extra = consecutiveExtra < 3; newPool.addAll([6, 6]); }
         else { newPool.addAll([d1, d2]); }
         if (d1 == d2 && (d1 == 6 || d1 == 1)) extra = true;
       }
 
       newPool.sort((a, b) => b.compareTo(a));
       isRolling = false; players = newPlayers; dicePool = newPool;
+      lastDiceResults = [d1, d2];
       consecutiveExtra = extra ? consecutiveExtra + 1 : 0;
       canRoll = extra;
       if (extra && !isGlobalFirstSix) AudioService.play('extra_turn');
@@ -441,96 +466,153 @@ class GameNotifier extends ChangeNotifier {
       }
     }
 
-    // ========== FIX 1: SECOND BORDER BLOCK = ABSOLUTE TOP PRIORITY ==========
-    
-    // CRITICAL: Apply isPastSecondStop multiplier EARLY before the major scoring
-    // so it reduces the base score but NOT the strategic bonuses below.
-    // This fixes the bug where the multiplier at the end was reducing second stop bonuses.
+    // ========== ENHANCED SECOND STOP BLOCKING ==========
+
     if (isPastSecondStop && targetState != PieceState.home) {
       int distToHomeEntry = 3 - ((currentPos - mySecondStop + 52) % 52);
       if (distToHomeEntry <= 2) score = (score * 0.3).toInt();
       else score = (score * 0.5).toInt();
     }
 
-    // Pieces behind second stop that CAN land on it = high priority  
-    if (isBehindSecondStop && !willPassSecondStop) {
+    // TASK 3: Extend behindSecondStop to ANY distance behind (not just 6 cells)
+    // TASK 3: Also detect passing over second stop into homeStretch/home
+    bool isBehindSecondStopAnyDist = distToSecondStop > 0 && !isPastSecondStop;
+    bool willPassSecondStopExtended = isBehindSecondStopAnyDist && distToSecondStop < move.dieValue && 
+        (targetState == PieceState.board || targetState == PieceState.homeStretch || targetState == PieceState.home);
+
+    // Pieces behind second stop that CAN land exactly on it = high priority
+    // TASK 3: Use extended behindSecondStop check (any distance)
+    if (isBehindSecondStopAnyDist && !willPassSecondStopExtended) {
       if (distToSecondStop == move.dieValue && targetState == PieceState.board && !isHit) {
         score += 250000; // Land exactly on second stop = extremely high
       }
     }
 
-    // HUGE penalty for passing over second stop without landing
-    if (willPassSecondStop) {
-      score -= 300000; // MASSIVE penalty - never pass over second stop
+    // TASK 3: HUGE penalty for passing over second stop (any distance) or entering home from behind
+    if (willPassSecondStopExtended) {
+      score -= 5000000; // EXTREME penalty - effectively disabled
       
-      // FIX 2: Even stronger penalty when other pieces exist that could move
-      // If there are other pieces not at/past second stop, passing over it is
-      // even more unacceptable
+      // Even stronger penalty when other pieces exist that could move
       if (piecesNeedingHelp > 0) {
-        score -= 200000; // Extra penalty when other pieces could move instead
+        score -= 1000000;
       }
     }
 
-    // Forming the 2-piece block on second stop is the TOP strategic priority
-    if (formingChokePoint) {
-      score += 500000; // MAXIMUM - forming the ultimate choke point
-    }
+    // Enhanced penalties for moving a piece from second stop while others need help
+    // are handled inline in the isCurrentSecondSafe block below
 
     // Landing ON second stop (even without forming block yet) is very high priority
     if (isTargetSecondSafe && targetState == PieceState.board) {
       if (sameColorAtTarget == 0) {
-        score += 200000; // First piece on second stop = setup for block
+        score += 800000;
       }
     }
 
-    // Moving FROM second stop = extremely penalized (breaking block)
+    // Enhanced penalties for moving a piece from second stop
     if (breakingChokePoint) {
-      score -= 250000; // Never break the established block
+      int breakMultiplier = piecesNeedingHelp > 2 ? 2 : (piecesNeedingHelp > 0 ? 3 : 2);
+      score -= 4000000 * breakMultiplier;
     }
     if (isCurrentSecondSafe) {
-      if (piecesAtSecondStop >= 2) {
-        score -= 80000;
+      if (targetState != PieceState.home) {
+        if (piecesAtSecondStop >= 2) {
+          score -= 3000000 + (piecesNeedingHelp > 0 ? 1000000 : 0);
+        } else {
+          score -= 6000000;
+        }
+        if (piecesNeedingHelp > 0 && !breakingChokePoint) {
+          score -= 2000000;
+        }
       } else {
-        score -= 300000;
+        if (piecesNeedingHelp > 3) {
+          score -= 500000;
+        } else if (piecesNeedingHelp > 0) {
+          score -= 1500000;
+        }
       }
     }
 
-    // ========== FIX 1: 6 IN POOL = PRISONER > YARD, BUT YARD STILL HIGH ==========
+    // ========== TASK 1: 6 IN POOL = PRISONER > YARD, BUT YARD STILL HIGH ==========
     bool hasSixInPool = currentPool.contains(6);
     int piecesInYard = players[myId].pieces.where((p) => p.state == PieceState.yard).length;
 
-    // Prisoner -> Yard: ABSOLUTE TOP priority (especially when 6 in pool)
-    if (currentState == PieceState.prison && targetState == PieceState.yard) {
-      score += 500000; // Base max
-      if (hasSixInPool) score += 300000; // Using a 6
-      if (prisoners >= 1) score += 200000;
-      if (prisoners >= 2) score += 200000 * prisoners;
-      
-      // When 2+ pieces in yard AND prisoner exists, prisoners get super-priority
-      // because the yard pieces are safe at home but prisoners are trapped
-      if (piecesInYard >= 2 && prisoners > 0) {
-        score += 300000; // Extra: many yard pieces safe, but prisoners need rescue
-      }
-      
-      if (piecesOnBoard <= 2) score += 200000;
-      int outDiff = opponentPiecesOut - myOut;
-      if (outDiff > 0) score += 50000 * (outDiff + 1);
+    // TASK 1: When bot has 1-2 yard, 1-2 board, 1-2 prisoners → prioritize yard over prison
+    bool mixedSituation = false;
+    if ((piecesInYard >= 1 && piecesInYard <= 2) && 
+        (piecesOnBoard >= 1 && piecesOnBoard <= 2) && 
+        (prisoners >= 1 && prisoners <= 2)) {
+      mixedSituation = true;
     }
 
-    // Yard -> Board: high priority, but defers to prisoners when they exist
-    if (currentState == PieceState.yard && targetState == PieceState.board) {
-      if (prisoners > 0) {
-        score -= 150000 * prisoners; // STRONG defer to prisoners
+    // Prisoner -> Yard: high priority, but defers to YARD if mixed situation
+    if (currentState == PieceState.prison && targetState == PieceState.yard) {
+      // TASK 1: In mixed situation, DON'T release prisoners - bring yard pieces out instead
+      if (mixedSituation) {
+        score -= 800000; // Strongly discourage prisoner release
       } else {
-        // No prisoners - release yard pieces with high priority
-        score += 200000;
-        if (hasSixInPool) score += 100000;
-        // When 2+ yard pieces exist and 6 in pool, urgency is higher
-        if (piecesInYard >= 2 && hasSixInPool) score += 80000;
-        int myOnBoard = piecesOnBoard;
-        if (myOnBoard <= 1) score += 80000;
+        score += 1000000; // Higher base
+        if (hasSixInPool) score += 500000;
+
+        // Rule A: only pieces at yard, 0 on board, has prisoners -> Prioritize Prisoners
+        if (piecesOnBoard == 0 && piecesInYard == 1 && prisoners > 0) {
+          score += 800000;
+        }
+        
+        if (piecesOnBoard <= 2) score += 200000;
         int outDiff = opponentPiecesOut - myOut;
-        if (outDiff > 0) score += 30000 * (outDiff + 1);
+        if (outDiff > 0) score += 50000 * (outDiff + 1);
+      }
+    }
+
+    // Yard -> Board: high priority, but defers to prisoners based on specific rules
+    if (currentState == PieceState.yard && targetState == PieceState.board) {
+      // TASK 1: In mixed situation, strongly boost yard release
+      if (mixedSituation) {
+        score += 1500000; // Very high priority to bring yard pieces out
+        if (hasSixInPool) score += 500000;
+        // TASK 6: Ambush from yard still applies
+        if (isHit) score += 600000;
+      } else {
+        bool shouldPrioritizeYard = false;
+
+        // Rule C: 2+ yard pieces, 0 on board -> Yard Release
+        if (piecesOnBoard == 0 && piecesInYard >= 2) {
+          shouldPrioritizeYard = true;
+        }
+        // Rule B: 1-2 board pieces, 1 yard piece -> Yard Release
+        else if ((piecesOnBoard == 1 || piecesOnBoard == 2) && piecesInYard == 1) {
+          shouldPrioritizeYard = true;
+        }
+
+        if (prisoners > 0 && !shouldPrioritizeYard) {
+          score -= 500000; // STRONG defer to prisoners (Rule A and others)
+        } else {
+          score += 500000; // High priority for yard release when rules apply
+          if (hasSixInPool) score += 200000;
+
+          if (shouldPrioritizeYard) score += 400000; // Extra boost if Rule B or C applies
+
+          // Task 7b & 7c logic refinement
+          bool enemyNearHome = false;
+          int myHomeStop = kMyStops[myId]![0];
+          for (var p in players) {
+            if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
+            for (var pc in p.pieces) {
+              if (pc.state == PieceState.board) {
+                int distToHome = (myHomeStop - pc.pos + 52) % 52;
+                if (distToHome >= 0 && distToHome <= 4) enemyNearHome = true;
+              }
+            }
+          }
+
+          if (enemyNearHome && piecesInYard == 1 && hasSixInPool && currentPool.where((d) => d == 6).length == 1) {
+             // Danger and only one 6 -> prioritize prisoners (unless Rule B/C overridden)
+             if (!shouldPrioritizeYard) score -= 400000;
+          }
+
+          // Task 6 Ambush/Opportunity from yard
+          if (isHit) score += 600000;
+        }
       }
     }
 
@@ -541,12 +623,9 @@ class GameNotifier extends ChangeNotifier {
       if (remainingDice.contains(6)) score += 50000;
     }
 
-    if (formingBlock && isTargetFirstSafe) {
-      score += 150000; // Blocking first stop is good defense
-    }
-
+    // TASK 2: Reorder priorities - 2nd: hitting opponent (boosted)
     if (isHit) {
-      score += 100000 + (hitCount * 80000);
+      score += 350000 + (hitCount * 120000);
       if (remainingDice.isNotEmpty) {
         int remainingDiceSum = remainingDice.fold(0, (sum, d) => sum + d);
         if (remainingDiceSum > 0 && targetState == PieceState.board) {
@@ -561,6 +640,11 @@ class GameNotifier extends ChangeNotifier {
           }
         }
       }
+    }
+
+    // TASK 2: 3rd priority - home border block (reduced below hit)
+    if (formingBlock && isTargetFirstSafe) {
+      score += 50000; // Reduced below hit
     }
 
     if (joiningBlock && !_isOwnColoredSafe(myId, targetPos) && _effectiveSafeZones.contains(targetPos)) {
@@ -598,6 +682,23 @@ class GameNotifier extends ChangeNotifier {
     if (targetState == PieceState.board && _effectiveSafeZones.contains(targetPos) && !formingBlock) score += 3000;
     if (targetIsChasing && !targetInDanger) score += 4000 + (chaseCountFromTarget * 3000);
 
+    // Task 6: Ambush - reward staying in hit range of an opponent if on a safe zone
+    if (currentState == PieceState.board && _isOwnColoredSafe(myId, currentPos)) {
+      bool isAmbushing = false;
+      for (var p in players) {
+        if (p.id == myId || p.partnerId == myId || !p.isActive) continue;
+        for (var pc in p.pieces) {
+          if (pc.state == PieceState.board) {
+            int dist = (pc.pos - currentPos + 52) % 52;
+            if (dist > 0 && dist <= 6) isAmbushing = true;
+          }
+        }
+      }
+      if (isAmbushing && !isHit && !isTargetSecondSafe && !isTargetFirstSafe) {
+        score -= 15000; // Penalty for leaving an ambush position unless hitting/safe
+      }
+    }
+
     int futureHitPotential = 0;
     if (targetState == PieceState.board) {
       for (var p in players) {
@@ -619,22 +720,24 @@ class GameNotifier extends ChangeNotifier {
 
     if (targetState == PieceState.homeStretch) score += 1500;
 
-    // FIX 3: Extra pieces at first stop (3+) should actively move out
-    // Only 2 pieces needed for blocking - 3rd+ piece is wasted
     if (isCurrentFirstSafe) {
       if (piecesAtFirstStop >= 3) {
-        // 3rd+ piece at first stop - encourage it to move!
-        score += 40000; // Bonus for moving extra blocking piece
+        score -= 500000; // 3+ pieces at first stop - move one out
       } else if (piecesAtFirstStop == 2) {
-        score -= 5000; // Block is formed - keep it
+        score -= 500000; // Breaking 2-piece block = moderate penalty (less than second stop)
       } else {
-        score -= 20000; // Need to maintain the block
+        score -= 500000; // Relaxed - maintain single piece
       }
     }
 
     if (targetInDanger && !isHit && !formingBlock) score -= 4000 * (threatCountNearTarget + 1);
     if (leavingVulnerable) score -= 5000;
     if (currentState == PieceState.board && _isOwnColoredSafe(myId, currentPos) && sameColorAtCurrent > 0 && !isHit && !breakingChokePoint && !isCurrentFirstSafe && !isCurrentSecondSafe) score -= 2000;
+
+    // Boost hitting score vs home stop blocking
+    if (isHit && targetState == PieceState.board && isCurrentFirstSafe) {
+      score += 200000; // Bonus for hitting while at home stop (outweighs block penalty)
+    }
 
     return score;
   }
@@ -724,6 +827,21 @@ class GameNotifier extends ChangeNotifier {
     pPiece.pos = target.targetPos;
     bool rewardTurn = currentCanRoll;
     if (target.targetState == PieceState.home) { AudioService.play('reach_goal'); rewardTurn = true; }
+    
+    // TASK 4: Revoke extra turn if player has no movable pieces
+    if (rewardTurn) {
+      bool hasMovable = false;
+      for (int d = 1; d <= 6; d++) {
+        for (final pc in pCtrl.pieces) {
+          if (pc.state == PieceState.home || pc.hasKilledThisTurn) continue;
+          final dest = calculateDestination(pCtrl, pc, d, newPlayers, pool: [d], dieIndex: 0, settings: settings);
+          if (dest != null) { hasMovable = true; break; }
+        }
+        if (hasMovable) break;
+      }
+      if (!hasMovable) rewardTurn = false;
+    }
+    
     final newPool = List<int>.from(currentPool);
     for (int idx in dieIndicesUsed.reversed) { newPool.removeAt(idx); }
     if (target.targetState == PieceState.board) {
@@ -739,12 +857,33 @@ class GameNotifier extends ChangeNotifier {
               if (settings.prisonRule) { opc.state = PieceState.prison; opc.pos = -2; opc.prisonerOf = ctrlId; }
               else { opc.state = PieceState.yard; opc.pos = -1; opc.prisonerOf = null; }
               pCtrl.hasKilled = true; pPiece.hasKilledThisTurn = true;
+              if (settings.diceCount == 1) rewardTurn = true;
             }
           }
         }
       }
     }
     if (!settings.killToEnter) pCtrl.hasKilled = true;
+    if (settings.blostOnDoubleFour && lastDiceResults.length >= 2 &&
+        lastDiceResults[0] == 4 && lastDiceResults[1] == 4 &&
+        pCtrl.hasKilled) {
+      bool hasBoardPiece = pCtrl.pieces.any((p) => p.state == PieceState.board);
+      if (hasBoardPiece) {
+        final safeZones = _effectiveSafeZones;
+        for (final op in newPlayers) {
+          if (op.id == ctrlId || op.id == pCtrl.partnerId || !op.isActive) continue;
+          for (final opc in op.pieces) {
+            if (opc.state == PieceState.board && !safeZones.contains(opc.pos)) {
+              op.timesHit++;
+              AudioService.play('hit_piece');
+              if (settings.prisonRule) { opc.state = PieceState.prison; opc.pos = -2; opc.prisonerOf = ctrlId; }
+              else { opc.state = PieceState.yard; opc.pos = -1; opc.prisonerOf = null; }
+              pCtrl.hasKilled = true;
+            }
+          }
+        }
+      }
+    }
     players = newPlayers; dicePool = newPool; canRoll = rewardTurn;
     _autoSelectDie();
     if (_checkGameOver(newPlayers)) return;
@@ -762,11 +901,61 @@ class GameNotifier extends ChangeNotifier {
     final newPlayers = _deepCopyPlayers(ps);
     for (final p in newPlayers) { for (final pc in p.pieces) { pc.hasKilledThisTurn = false; } }
     players = newPlayers;
-    do { turnSlot = (turnSlot + 1) % 4; }
-    while (!players[turnSlot].isActive || (players[turnSlot].finished && !settings.teamPlay));
-    dicePool = []; consecutiveExtra = 0; canRoll = true; selectedDieIndex = null;
+
+    _advanceTurn(newPlayers);
+  }
+
+  void _advanceTurn(List<Player> ps) {
+    int nextSlot = (turnSlot + 1) % 4;
+    bool skipExtra = false;
+    if (settings.skipOnDoubleThree && lastDiceResults.length >= 2 &&
+        lastDiceResults[0] == 3 && lastDiceResults[1] == 3) {
+      skipExtra = true;
+    }
+    while (!_isValidTurn(nextSlot, ps)) {
+      nextSlot = (nextSlot + 1) % 4;
+    }
+    if (skipExtra) {
+      int skipped = nextSlot;
+      nextSlot = (nextSlot + 1) % 4;
+      while (!_isValidTurn(nextSlot, ps)) {
+        nextSlot = (nextSlot + 1) % 4;
+      }
+      if (nextSlot == skipped) { }
+    }
+
+    if (nextSlot != (turnSlot + 1) % 4) {
+      Timer(const Duration(milliseconds: 100), () {
+        turnSlot = nextSlot;
+        _finalizeTurnStart();
+      });
+    } else {
+      turnSlot = nextSlot;
+      _finalizeTurnStart();
+    }
+  }
+
+  bool _isValidTurn(int slot, List<Player> ps) {
+    final p = ps[slot];
+    if (!p.isActive) return false;
+    if (p.finished && !settings.teamPlay) return false;
+
+    // Task 1 & 2: Skip if no possible move with any dice result
+    if (!hasAnyPossibleMove(p, ps, settings)) return false;
+
+    return true;
+  }
+
+  void _finalizeTurnStart() {
+    dicePool = [];
+    consecutiveExtra = 0;
+    lastDiceResults = [];
+    canRoll = true;
+    selectedDieIndex = null;
     notifyListeners();
-    if (players[turnSlot].isAI) { Timer(const Duration(milliseconds: 560), rollDice); }
+    if (players[turnSlot].isAI) {
+      Timer(const Duration(milliseconds: 560), rollDice);
+    }
   }
 
   void resetToSetup() { phase = GamePhase.setup; players = []; dicePool = []; notifyListeners(); }

@@ -13,8 +13,9 @@ class AppTheme {
   static const Color bgDeep = Color(0xFF0a0f1e);
   static const Color bgPanel = Color(0xFF111827);
   static const Color bgPanelAlt = Color(0xFF1e293b);
-  static const Color border = Color(0xFF1f2937);
-  static const Color borderStrong = Color(0xFF334155);
+static const Color border = Color(0xFF1f2937);
+   static const Color borderStrong = Color(0xFF334155);
+   static const Color borderFaint = Color(0xFF0f172a);
   static const Color textPrimary = Colors.white;
   static const Color textMuted = Color(0xFF94a3b8);
   static const Color textSubtle = Color(0xFF64748b);

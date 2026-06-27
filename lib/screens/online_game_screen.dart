@@ -368,6 +368,9 @@ class _OnlineGameProxy extends GameNotifier {
     final phaseChanged = _lastPhaseHash != phaseHash;
     final toastChanged = _lastToast != newToast && (newToast.isNotEmpty || toastCleared);
 
+    // Determine if we should show rolling animation (dice appeared from empty = roll happened)
+    bool shouldShowRolling = _lastDicePool.isEmpty && newDicePool.isNotEmpty;
+
     _lastTurnSlot = newTurnSlot;
     _lastDicePool = newDicePool;
     _lastCanRoll = newCanRoll;
@@ -385,9 +388,19 @@ class _OnlineGameProxy extends GameNotifier {
     turnSlot = newTurnSlot;
     settings = _online.settings;
     toast = _online.toast;
-    isRolling = false;
     selectedDieIndex = _online.room?.selectedDieIndex;
+    
+    // Show rolling animation when dice appears (roll happened)
+    isRolling = shouldShowRolling;
     notifyListeners();
+    
+    // Clear rolling flag after animation duration
+    if (shouldShowRolling) {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        isRolling = false;
+        notifyListeners();
+      });
+    }
   }
 
   bool _listCastDiffers(List<int> a, List<int> b) {
@@ -425,7 +438,6 @@ class _OnlineGameProxy extends GameNotifier {
     if (selectedDieIndex != null) {
       _online.movePiece(piece, [selectedDieIndex!]);
     } else if (dicePool.length == 2) {
-      // Check if any single move possible; if not, try combined
       bool hasSingle = false;
       for (int i = 0; i < dicePool.length; i++) {
         final dest = calculateDestination(pCtrl, piece, dicePool[i], players,
@@ -488,17 +500,17 @@ class _OnlineGameBody extends StatelessWidget {
                 ),
 
                 // HUD overlay — animates to active player corner
-                AnimatedAlign(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeInOut,
-                  alignment: _yardAlignments[actId],
-                  child: Padding(
-                    padding: _pad(_yardAlignments[actId]),
-                    child: _OnlineHud(notifier: notifier, proxy: proxy),
-                  ),
-                ),
+AnimatedAlign(
+                   duration: const Duration(milliseconds: 350),
+                   curve: Curves.easeInOut,
+                   alignment: _yardAlignments[actId],
+                   child: Padding(
+                     padding: _pad(_yardAlignments[actId]),
+                     child: _OnlineHud(notifier: notifier, proxy: proxy),
+                   ),
+                 ),
 
-                // Leave button
+                 // Leave button - just returns to lobby, game continues on server
                 Positioned(
                   top: 8,
                   right: 8,
@@ -543,9 +555,9 @@ class _OnlineGameBody extends StatelessWidget {
         backgroundColor: const Color(0xFF111827),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Leave Match?',
+        title: const Text('Exit Game Screen?',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text('You will disconnect from the online game.',
+        content: const Text('You will leave this screen but the game continues on the server.',
             style: TextStyle(color: Color(0xFF94a3b8))),
         actions: [
           TextButton(
@@ -553,16 +565,13 @@ class _OnlineGameBody extends StatelessWidget {
               child: const Text('Cancel',
                   style: TextStyle(color: Color(0xFF64748b)))),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(context);
-              await notifier.disconnect();
-              if (context.mounted) {
-                Navigator.popUntil(context, (r) => r.isFirst);
-              }
+              Navigator.popUntil(context, (r) => r.isFirst);
             },
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFef4444)),
-            child: const Text('Leave',
+                backgroundColor: const Color(0xFF2563eb)),
+            child: const Text('Exit',
                 style: TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),
           ),
@@ -729,16 +738,26 @@ class _OnlineHudState extends State<_OnlineHud> {
                         fontSize: 10)),
               ],
             ]),
-            const SizedBox(height: 6),
+const SizedBox(height: 6),
 
-            // Dice row
-            DiceCellRow(
-              diceValues: game.dicePool,
-              selectedIndex: game.selectedDieIndex,
-              onDieTap: game.handleDieClick,
-              cellSize: 48,
-            ),
-            const SizedBox(height: 8),
+             // Dice row - show rolling animation when dice appear for AI
+             if (game.isRolling)
+               Row(
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+                   _OnlineRollingDie(),
+                   const SizedBox(width: 8),
+                   _OnlineRollingDie(),
+                 ],
+               )
+             else
+               DiceCellRow(
+                 diceValues: game.dicePool,
+                 selectedIndex: game.selectedDieIndex,
+                 onDieTap: game.handleDieClick,
+                 cellSize: 48,
+               ),
+             const SizedBox(height: 8),
 
             // Status row - progress bar for the auto-roll countdown
             if (isAI)
@@ -838,6 +857,43 @@ class _OnlineEndScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _OnlineRollingDie extends StatefulWidget {
+  const _OnlineRollingDie();
+  @override
+  State<_OnlineRollingDie> createState() => _OnlineRollingDieState();
+}
+
+class _OnlineRollingDieState extends State<_OnlineRollingDie>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  int _val = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+    )
+      ..addListener(() {
+        if (_ctrl.value > 0.5) {
+          final next = (_val % 6) + 1;
+          if (next != _val) setState(() => _val = next);
+        }
+      })
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => DiceCellWidget(value: _val, size: 48);
 }
 
 class _ToastBadge extends StatelessWidget {

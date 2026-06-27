@@ -423,7 +423,8 @@ class _PiecesLayer extends StatelessWidget {
             !game.players[actId].isAI &&
             game.phase == GamePhase.play &&
             game.selectedDieIndex != null &&
-            game.dicePool.isNotEmpty) {
+            game.dicePool.isNotEmpty &&
+            game.selectedDieIndex! < game.dicePool.length) {
           final moveVal = game.dicePool[game.selectedDieIndex!];
           if (!pc.hasKilledThisTurn) {
             final dest = calculateDestination(

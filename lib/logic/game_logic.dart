@@ -81,7 +81,10 @@ MoveDestination? calculateDestSimple(
   if (piece.state == PieceState.home) return null;
 
   if (piece.state == PieceState.homeStretch) {
-    final remaining = 5 - piece.pos;
+    final piecesHome = player.pieces.where((p) => p.state == PieceState.home).length;
+    final isLastPiece = piecesHome >= 3;
+    final homeStretchSize = (settings.finalSixFinish && isLastPiece) ? 6 : 5;
+    final remaining = homeStretchSize - piece.pos;
     if (moveVal == remaining) {
       return MoveDestination(
         valid: true,
@@ -106,14 +109,17 @@ MoveDestination? calculateDestSimple(
         final canEnter = !settings.killToEnter || player.hasKilled;
         if (canEnter) {
           final remaining = moveVal - step;
-          if (remaining == 5) {
+          final piecesHome = player.pieces.where((p) => p.state == PieceState.home).length;
+          final isLastPiece = piecesHome >= 3;
+          final homeStretchSize = (settings.finalSixFinish && isLastPiece) ? 6 : 5;
+          if (remaining == homeStretchSize) {
             return MoveDestination(
               valid: true,
               targetState: PieceState.home,
               targetPos: 999,
             );
           }
-          if (remaining < 5) {
+          if (remaining < homeStretchSize) {
             return MoveDestination(
               valid: true,
               targetState: PieceState.homeStretch,
@@ -159,6 +165,38 @@ MoveDestination? calculateDestSimple(
     );
   }
   return null;
+}
+
+bool hasAnyPossibleMove(Player player, List<Player> allPlayers, GameSettings settings) {
+  if (player.finished && !player.isHelper && settings.teamPlay) {
+    // Not yet a helper: can roll to become one unless partner is also finished
+    return !allPlayers[player.partnerId].finished;
+  }
+
+  // Determine who we are controlling
+  final ctrlId = (player.finished && player.isHelper && settings.teamPlay)
+      ? player.partnerId
+      : player.id;
+  final pCtrl = allPlayers[ctrlId];
+
+  if (pCtrl.finished) return false;
+
+  final allHome = pCtrl.pieces.every((pc) => pc.state == PieceState.home);
+  if (allHome) {
+    // If all pieces home, only the player's own turn matters (for winning roll).
+    // Helper's turn is useless if pieces are already home.
+    return player.id == ctrlId;
+  }
+
+  for (int d = 1; d <= 6; d++) {
+    for (final pc in pCtrl.pieces) {
+      if (pc.state == PieceState.home || pc.hasKilledThisTurn) continue;
+      final dest = calculateDestination(pCtrl, pc, d, allPlayers,
+          settings: settings, pool: [d], dieIndex: 0);
+      if (dest != null) return true;
+    }
+  }
+  return false;
 }
 
 MoveDestination? calculateDestination(

@@ -1,11 +1,7 @@
 import '../models/game_models.dart';
 import '../models/game_settings.dart';
 
-// ── Enums ──────────────────────────────────────────────────────────────────
-
 enum OnlineGamePhase { waiting, play, end }
-
-// ── Online room state ──────────────────────────────────────────────────────
 
 class OnlineRoom {
   final String roomId;
@@ -108,6 +104,7 @@ class OnlinePlayer {
       );
 }
 
+
 class OnlinePiece {
   final int id;
   final int color;
@@ -160,7 +157,12 @@ class OnlineSettings {
   final bool safeZonesEnabled;
   final bool prisonRule;
   final bool teamPlay;
+  final bool autoMoveUnambiguous;
   final int playerCount;
+  final bool finalSixFinish;
+  final int diceCount;
+  final bool skipOnDoubleThree;
+  final bool blostOnDoubleFour;
 
   const OnlineSettings({
     this.doubleSixBonus = true,
@@ -168,7 +170,12 @@ class OnlineSettings {
     this.safeZonesEnabled = true,
     this.prisonRule = true,
     this.teamPlay = true,
+    this.autoMoveUnambiguous = true,
     this.playerCount = 4,
+    this.finalSixFinish = true,
+    this.diceCount = 2,
+    this.skipOnDoubleThree = false,
+    this.blostOnDoubleFour = false,
   });
 
   factory OnlineSettings.fromJson(Map<String, dynamic> j) => OnlineSettings(
@@ -177,7 +184,12 @@ class OnlineSettings {
         safeZonesEnabled: j['safeZonesEnabled'] ?? true,
         prisonRule: j['prisonRule'] ?? true,
         teamPlay: j['teamPlay'] ?? true,
+        autoMoveUnambiguous: j['autoMoveUnambiguous'] ?? true,
         playerCount: j['playerCount'] ?? 4,
+        finalSixFinish: j['finalSixFinish'] ?? true,
+        diceCount: j['diceCount'] ?? 2,
+        skipOnDoubleThree: j['skipOnDoubleThree'] ?? false,
+        blostOnDoubleFour: j['blostOnDoubleFour'] ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -186,17 +198,26 @@ class OnlineSettings {
         'safeZonesEnabled': safeZonesEnabled,
         'prisonRule': prisonRule,
         'teamPlay': teamPlay,
+        'autoMoveUnambiguous': autoMoveUnambiguous,
         'playerCount': playerCount,
-        'autoMoveUnambiguous': true,
+        'finalSixFinish': finalSixFinish,
+        'diceCount': diceCount,
+        'skipOnDoubleThree': skipOnDoubleThree,
+        'blostOnDoubleFour': blostOnDoubleFour,
       };
 
   GameSettings toLocalSettings() => GameSettings(
         doubleSixBonus: doubleSixBonus,
         killToEnter: killToEnter,
         safeZonesEnabled: safeZonesEnabled,
+        autoMoveUnambiguous: autoMoveUnambiguous,
         prisonRule: prisonRule,
         teamPlay: teamPlay,
         playerCount: playerCount,
+        finalSixFinish: finalSixFinish,
+        diceCount: diceCount,
+        skipOnDoubleThree: skipOnDoubleThree,
+        blostOnDoubleFour: blostOnDoubleFour,
       );
 }
 

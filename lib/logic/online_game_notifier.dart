@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import '../models/game_models.dart';
 import '../models/game_settings.dart';
@@ -28,6 +29,9 @@ class OnlineGameNotifier extends ChangeNotifier {
   List<RoomSummary> lobbyList = [];
   List<PendingRequest> pendingRequests = [];
   String? joinRequestStatus;
+
+  final Queue<Map<String, dynamic>> _stateQueue = Queue();
+  bool _processingQueue = false;
 
   bool get isHubConnected => _hub.isConnected;
 
@@ -144,43 +148,42 @@ class OnlineGameNotifier extends ChangeNotifier {
 
   void _registerHandlers() {
     _hub.on('RoomCreated', (args) {
-      if (args == null || args.isEmpty) return;
-      final data = _d(args[0]);
-      mySlot = data['yourSlot'];
-      isHost = true;
-      room = OnlineRoom.fromJson(data['room'] as Map<String, dynamic>);
-      roomId = room!.roomId;
-      _setPhase(OnlinePhase.lobby);
+      try {
+        if (args == null || args.isEmpty) return;
+        final data = _d(args[0]);
+        mySlot = data['yourSlot'] as int? ?? -1;
+        isHost = true;
+        final roomData = data['room'];
+        if (roomData is Map<String, dynamic>) {
+          room = OnlineRoom.fromJson(roomData);
+          roomId = room!.roomId;
+        }
+        _setPhase(OnlinePhase.lobby);
+      } catch (_) {}
     });
 
     _hub.on('RoomJoined', (args) {
-      if (args == null || args.isEmpty) return;
-      final data = _d(args[0]);
-      mySlot = data['yourSlot'];
-      isHost = false;
-      room = OnlineRoom.fromJson(data['room'] as Map<String, dynamic>);
-      roomId = room!.roomId;
-      joinRequestStatus = null;
-      _setPhase(OnlinePhase.lobby);
+      try {
+        if (args == null || args.isEmpty) return;
+        final data = _d(args[0]);
+        mySlot = data['yourSlot'] as int? ?? -1;
+        isHost = false;
+        final roomData = data['room'];
+        if (roomData is Map<String, dynamic>) {
+          room = OnlineRoom.fromJson(roomData);
+          roomId = room!.roomId;
+        }
+        joinRequestStatus = null;
+        _setPhase(OnlinePhase.lobby);
+      } catch (_) {}
     });
 
     _hub.on('GameState', (args) {
-      if (args == null || args.isEmpty) return;
-      final data = _d(args[0]);
-      final prev = room;
-      room = OnlineRoom.fromJson(data['room'] as Map<String, dynamic>);
-      final msg = data['toast'] as String?;
-      _playSounds(prev, room!, msg);
-      if (msg != null && msg.isNotEmpty) _showToast(msg);
-      if (room!.phase == OnlineGamePhase.play && onlinePhase != OnlinePhase.playing) {
-        AudioService.play('start_game');
-        _setPhase(OnlinePhase.playing);
-      } else if (room!.phase == OnlineGamePhase.end) {
-        AudioService.stopAll();
-        _setPhase(OnlinePhase.ended);
-      } else {
-        notifyListeners();
-      }
+      try {
+        if (args == null || args.isEmpty) return;
+        _stateQueue.add(_d(args[0]));
+        _processNextState();
+      } catch (_) {}
     });
 
     _hub.on('LobbyList', (args) {
@@ -216,6 +219,40 @@ class OnlineGameNotifier extends ChangeNotifier {
       errorMsg = (_d(args[0]))['error'] as String?;
       _setPhase(OnlinePhase.error);
     });
+  }
+
+  void _processNextState() async {
+    if (_processingQueue || _stateQueue.isEmpty) return;
+    _processingQueue = true;
+
+    while (_stateQueue.isNotEmpty) {
+      final data = _stateQueue.removeFirst();
+      final prev = room;
+      try {
+        room = OnlineRoom.fromJson(data['room'] as Map<String, dynamic>? ?? data);
+      } catch (e) {
+        _processingQueue = false;
+        return;
+      }
+      final msg = data['toast'] as String?;
+
+      _playSounds(prev, room!, msg);
+      if (msg != null && msg.isNotEmpty) _showToast(msg);
+
+      if (room!.phase == OnlineGamePhase.play && onlinePhase != OnlinePhase.playing) {
+        AudioService.play('start_game');
+        _setPhase(OnlinePhase.playing);
+      } else if (room!.phase == OnlineGamePhase.end) {
+        AudioService.stopAll();
+        _setPhase(OnlinePhase.ended);
+      } else {
+        notifyListeners();
+      }
+
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    _processingQueue = false;
   }
 
   // ── Sound mirroring ─────────────────────────────────────────────────────
