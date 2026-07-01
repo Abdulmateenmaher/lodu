@@ -232,6 +232,19 @@ class GameNotifier extends ChangeNotifier {
       lastDiceResults = [d1, d2];
       consecutiveExtra = extra ? consecutiveExtra + 1 : 0;
       canRoll = extra;
+
+      // FIX: If extra turn was granted but player has no movable piece with current dice pool, revoke it
+      if (canRoll) {
+        final ctrlId = getControlPlayerId(newPlayers);
+        final pCtrl = newPlayers[ctrlId];
+        final allMoves = getAllValidMoves(pCtrl, newPool, newPlayers, settings);
+        if (allMoves.isEmpty) {
+          canRoll = false;
+          extra = false;
+          consecutiveExtra = 0;
+        }
+      }
+
       if (extra && !isGlobalFirstSix) AudioService.play('extra_turn');
       _autoSelectDie();
       notifyListeners();
