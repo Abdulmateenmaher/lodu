@@ -839,10 +839,19 @@ class GameNotifier extends ChangeNotifier {
     pPiece.state = target.targetState;
     pPiece.pos = target.targetPos;
     bool rewardTurn = currentCanRoll;
-    if (target.targetState == PieceState.home) { AudioService.play('reach_goal'); rewardTurn = true; }
+    if (target.targetState == PieceState.home) {
+      AudioService.play('reach_goal');
+      rewardTurn = true;
+    }
+
+    final newPool = List<int>.from(currentPool);
+    for (int idx in dieIndicesUsed.reversed) { newPool.removeAt(idx); }
+    if (target.targetState == PieceState.home && pCtrl.pieces.every((pc) => pc.state == PieceState.home)) {
+      newPool.clear();
+    }
     
-    // TASK 4: Revoke extra turn if player has no movable pieces
-    if (rewardTurn) {
+    bool allHome = pCtrl.pieces.every((pc) => pc.state == PieceState.home);
+    if (rewardTurn && !allHome) {
       bool hasMovable = false;
       for (int d = 1; d <= 6; d++) {
         for (final pc in pCtrl.pieces) {
@@ -854,9 +863,6 @@ class GameNotifier extends ChangeNotifier {
       }
       if (!hasMovable) rewardTurn = false;
     }
-    
-    final newPool = List<int>.from(currentPool);
-    for (int idx in dieIndicesUsed.reversed) { newPool.removeAt(idx); }
     if (target.targetState == PieceState.board) {
       int sameColor = pCtrl.pieces.where((p) => p.state == PieceState.board && p.pos == target.targetPos).length;
       if (sameColor == 2) AudioService.play('block_border');

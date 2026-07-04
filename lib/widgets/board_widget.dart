@@ -511,7 +511,9 @@ class _PiecesLayer extends StatelessWidget {
       x = base['x']! + pc.id * 0.4;
       y = base['y']! + pc.id * 0.4;
     } else if (pc.state == PieceState.homeStretch) {
-      final c = kHomeStretches[pc.color]![pc.pos];
+      final stretches = kHomeStretches[pc.color]!;
+      final clamped = pc.pos < stretches.length ? pc.pos : stretches.length - 1;
+      final c = stretches[clamped];
       x = c['x']!.toDouble();
       y = c['y']!.toDouble();
     } else if (pc.state == PieceState.home) {

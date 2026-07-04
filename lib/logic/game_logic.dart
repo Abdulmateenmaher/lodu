@@ -81,7 +81,7 @@ MoveDestination? calculateDestSimple(
   if (piece.state == PieceState.home) return null;
 
   if (piece.state == PieceState.homeStretch) {
-    final homeStretchSize = settings.finalSixFinish ? 6 : 5;
+    const homeStretchSize = 5;
     final remaining = homeStretchSize - piece.pos;
     if (moveVal == remaining) {
       return MoveDestination(
@@ -107,7 +107,7 @@ MoveDestination? calculateDestSimple(
         final canEnter = !settings.killToEnter || player.hasKilled;
         if (canEnter) {
           final remaining = moveVal - step;
-          final homeStretchSize = settings.finalSixFinish ? 6 : 5;
+          const homeStretchSize = 5;
           if (remaining == homeStretchSize) {
             return MoveDestination(
               valid: true,
