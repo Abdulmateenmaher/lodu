@@ -195,6 +195,45 @@ bool hasAnyPossibleMove(Player player, List<Player> allPlayers, GameSettings set
   return false;
 }
 
+/// Checks whether the player has ANY other valid move (single-die on any
+/// piece/die, or a combined pair of dice on any piece) besides the exact
+/// move identified by [excludePiece] + [excludeDieIndex]. Used to detect
+/// when a hitting move is actually the player's ONLY possible move, in
+/// which case it must NOT be blocked even if it "wastes" remaining dice.
+bool _hasAnyOtherMoveInPool(
+  Player player,
+  List<Player> players,
+  GameSettings settings,
+  List<int> pool,
+  Piece excludePiece,
+  int excludeDieIndex,
+) {
+  // Any other single-die move (any piece, any die index) besides the exact
+  // move being evaluated.
+  for (int i = 0; i < pool.length; i++) {
+    for (final p in player.pieces) {
+      if (p.id == excludePiece.id && i == excludeDieIndex) continue;
+      if (p.state == PieceState.home || p.hasKilledThisTurn) continue;
+      final d = calculateDestSimple(player, p, pool[i], players, settings, pool);
+      if (d != null) return true;
+    }
+  }
+  // Any combined (pair-sum) move for any piece.
+  if (pool.length >= 2) {
+    for (int i = 0; i < pool.length; i++) {
+      for (int j = i + 1; j < pool.length; j++) {
+        final sum = pool[i] + pool[j];
+        for (final p in player.pieces) {
+          if (p.state == PieceState.home || p.hasKilledThisTurn) continue;
+          final d = calculateDestSimple(player, p, sum, players, settings, pool);
+          if (d != null) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 MoveDestination? calculateDestination(
   Player player,
   Piece piece,
@@ -212,6 +251,13 @@ MoveDestination? calculateDestination(
       !safeZones.contains(dest.targetPos) &&
       hasOpponent(dest.targetPos, player.id, players)) {
     if (pool.length > 1 && dieIndex != -1) {
+      // FIX: If this hit is, in advance, the ONLY possible move for the
+      // whole player (no other single or combined move exists anywhere),
+      // do NOT block/force-combine it. Just allow the single-die hit and
+      // let the remaining dice go unused.
+      if (!_hasAnyOtherMoveInPool(player, players, settings, pool, piece, dieIndex)) {
+        return dest;
+      }
       final remainingPool = List<int>.from(pool)..removeAt(dieIndex);
       bool hasAnyOtherMove = false;
       outer:
@@ -275,7 +321,7 @@ List<AiMove> getAllValidMoves(
 ) {
   final List<AiMove> moves = [];
   final List<AiMove> combinedMoves = [];
-  
+
   // Single die moves
   for (int i = 0; i < pool.length; i++) {
     for (final pc in player.pieces) {
@@ -296,7 +342,7 @@ List<AiMove> getAllValidMoves(
       }
     }
   }
-  
+
   // 🔥 ENHANCED: Combined moves for pairs - ALWAYS generate these alongside singles
   // AI should consider sum-of-dice moves as alternatives, not just fallback
   if (pool.length >= 2) {
@@ -323,7 +369,7 @@ List<AiMove> getAllValidMoves(
       }
     }
   }
-  
+
   // If no single moves exist, use combined moves
   // If single moves exist, also include combined moves for AI evaluation
   if (moves.isEmpty) {
