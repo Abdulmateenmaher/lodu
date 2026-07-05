@@ -770,7 +770,7 @@ const SizedBox(height: 6),
                         color: Color(0xFF94a3b8), fontSize: 11)),
               ])
             else if (!isMyTurn)
-              Text('Waiting for ${playerName}…',
+              Text('Waiting for $playerName…',
                   style: const TextStyle(
                       color: Color(0xFF94a3b8), fontSize: 11))
             else if (showAutoRollCountdown)

@@ -62,31 +62,6 @@ Added inline service worker registration script:
 - Requests immediate activation with `skipWaiting` via message post
 - Proper error handling with console logging
 - Scope set to `/` for full app control
-
-### 3. `lib/services/audio_service.dart` - Audio Service Enhancement
-Improved the audio service for better offline handling:
-
-**Changes:**
-- Added `_isOffline` flag to track network status
-- Added `_checkNetworkStatus()` method (returns true, letting service worker handle caching)
-- Enhanced error handling in `play()` method:
-  - Catches audio playback errors
-  - Only attempts reinitialization if WAS online (not in offline mode)
-  - Prevents infinite retry loops when offline
-  - Graceful degradation - continues functioning without audio if needed
-
-**Benefits:**
-- Prevents error loops when offline
-- Graceful handling of missing audio files
-- Reduced unnecessary resource usage in offline mode
-
-### 4. `web/manifest.json` - PWA Manifest Enhancement
-Added `display_override` and `related_applications` fields:
-
-- `display_override`: ["standalone", "minimal-ui"] - Better iOS support
-- `related_applications`: [] - Explicit empty array
-- Ensures proper PWA behavior on all platforms
-
 ## How It Works
 
 ### First Visit (Online):

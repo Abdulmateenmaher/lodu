@@ -4,6 +4,7 @@ import '../constants/board_constants.dart';
 import '../logic/game_notifier.dart';
 import '../models/game_settings.dart';
 import '../services/audio_service.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/common/gradient_button.dart';
@@ -12,6 +13,7 @@ import '../widgets/common/glowing_grid_background.dart';
 import 'history_screen.dart';
 import 'online_setup_screen.dart';
 import 'settings_sheet.dart';
+import 'auth_screens.dart';
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -48,7 +50,9 @@ class _SetupScreenState extends State<SetupScreen>
   @override
   void dispose() {
     _enterCtrl.dispose();
-    for (final c in _nameCtrl) c.dispose();
+    for (final c in _nameCtrl) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -68,6 +72,39 @@ class _SetupScreenState extends State<SetupScreen>
     setState(() => _muted = !_muted);
     AudioService.setMuted(_muted);
     Haptics.selection();
+  }
+
+  void _enterOnlineMode() {
+    final auth = context.read<AuthService>();
+    Haptics.light();
+    if (!auth.isAuthenticated) {
+      _showAuthPrompt();
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const OnlineSetupScreen()),
+    );
+  }
+
+  void _showAuthPrompt() {
+    final auth = context.read<AuthService>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _AuthBottomSheet(auth: auth),
+    );
+  }
+
+  void _openProfileSheet() {
+    final auth = context.read<AuthService>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _ProfileBottomSheet(auth: auth),
+    );
   }
 
   @override
@@ -116,15 +153,22 @@ class _SetupScreenState extends State<SetupScreen>
   }
 
   Widget _buildTopBar() {
+    final auth = context.watch<AuthService>();
+    final isLoggedIn = auth.isAuthenticated;
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
+        _CircleIconBtn(
+          icon: isLoggedIn ? Icons.person_rounded : Icons.login_rounded,
+          color: isLoggedIn ? AppTheme.accentGreen : AppTheme.accentBlue,
+          onTap: isLoggedIn ? _openProfileSheet : _showAuthPrompt,
+        ),
+        const Spacer(),
         _CircleIconBtn(
           icon: Icons.tune_rounded,
           color: AppTheme.accentBlue,
           onTap: _openSettings,
         ),
-        const Spacer(),
+        const SizedBox(width: 10),
         _CircleIconBtn(
           icon: _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
           color: _muted ? AppTheme.textMuted : AppTheme.accentGreen,
@@ -235,13 +279,7 @@ class _SetupScreenState extends State<SetupScreen>
           label: 'Play Online',
           icon: Icons.wifi_rounded,
           color: AppTheme.accentGreen,
-          onPressed: () {
-            Haptics.light();
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const OnlineSetupScreen()),
-            );
-          },
+          onPressed: _enterOnlineMode,
         ),
         const SizedBox(height: AppTheme.gap10),
         OutlinedPillButton(
@@ -465,6 +503,171 @@ class _SegmentedToggleState extends State<_SegmentedToggle>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AuthBottomSheet extends StatelessWidget {
+  final AuthService auth;
+  const _AuthBottomSheet({required this.auth});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.bgPanel,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.borderStrong,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Sign In Required',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Sign in to play online and save your match history to the cloud.',
+            style: TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 13,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          GradientButton(
+            label: 'Sign In',
+            icon: Icons.login_rounded,
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+            expand: true,
+          ),
+          const SizedBox(height: 10),
+          GradientButton(
+            label: 'Create Account',
+            icon: Icons.person_add_rounded,
+            gradient: AppTheme.successButton,
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SignUpScreen()),
+              );
+            },
+            expand: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileBottomSheet extends StatelessWidget {
+  final AuthService auth;
+  const _ProfileBottomSheet({required this.auth});
+
+  Future<void> _signOut(BuildContext context) async {
+    await auth.signOut();
+    if (context.mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = auth.currentUser;
+    final displayName = user?.displayLabel ?? 'Player';
+    final email = user?.email ?? '';
+    final photoUrl = user?.photoUrl;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.bgPanel,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.borderStrong,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppTheme.accentBlueDeep,
+                backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                child: photoUrl == null
+                    ? Text(
+                        displayName.isNotEmpty
+                            ? displayName[0].toUpperCase()
+                            : 'P',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      email,
+                      style: TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          GradientButton(
+            label: 'Sign Out',
+            icon: Icons.logout_rounded,
+            gradient: AppTheme.dangerButton,
+            onPressed: () => _signOut(context),
+            expand: true,
+          ),
+        ],
       ),
     );
   }

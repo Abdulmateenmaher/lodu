@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,18 +6,19 @@ import 'logic/game_notifier.dart';
 import 'screens/setup_screen.dart';
 import 'screens/game_screen.dart';
 import 'screens/end_screen.dart';
+import 'screens/auth_screens.dart';
 import 'services/audio_service.dart';
+import 'services/auth_service.dart';
+import 'services/firebase_history_service.dart';
 import 'theme/app_theme.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock to portrait — the board layout is tuned for vertical screens.
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  // Use a translucent status bar that complements the dark theme.
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -26,12 +28,25 @@ void main() async {
     ),
   );
 
-  // Initialize audio service for proper mobile audio support
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase init error: $e');
+  }
+
   await AudioService.initialize();
 
+  final authService = AuthService();
+  await authService.initialize();
+
+  FirebaseHistoryService();
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => GameNotifier(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<GameNotifier>(create: (_) => GameNotifier()),
+        ChangeNotifierProvider<AuthService>.value(value: authService),
+      ],
       child: const LudoApp(),
     ),
   );
@@ -46,8 +61,6 @@ class LudoApp extends StatelessWidget {
       title: 'وطني چکه',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(),
-      // Global route generation that uses our custom fade-through transition
-      // for every page pushed by the app.
       onGenerateRoute: (settings) {
         Widget page;
         switch (settings.name) {
@@ -59,6 +72,15 @@ class LudoApp extends StatelessWidget {
             break;
           case '/end':
             page = const EndScreen();
+            break;
+          case '/login':
+            page = const LoginScreen();
+            break;
+          case '/signup':
+            page = const SignUpScreen();
+            break;
+          case '/forgot-password':
+            page = const ForgotPasswordScreen();
             break;
           default:
             page = const SetupScreen();
@@ -96,7 +118,7 @@ class _RootRouter extends StatelessWidget {
           alignment: Alignment.topCenter,
           children: <Widget>[
             ...previousChildren,
-            if (currentChild != null) currentChild,
+            if (currentChild != null) currentChild, // ignore: use_null_aware_elements
           ],
         );
       },

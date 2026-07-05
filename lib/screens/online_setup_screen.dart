@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import '../logic/online_game_notifier.dart';
 import '../models/online_models.dart';
 import '../services/audio_service.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/glass_card.dart';
 import '../widgets/common/gradient_button.dart';
-import '../widgets/common/status_pill.dart';
 import '../widgets/common/glowing_grid_background.dart';
 import 'online_game_screen.dart';
 
@@ -24,12 +24,17 @@ class OnlineSetupScreen extends StatefulWidget {
   State<OnlineSetupScreen> createState() => _OnlineSetupScreenState();
 }
 
-class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
+class _OnlineSetupScreenState extends State<OnlineSetupScreen>
+    with TickerProviderStateMixin {
   late final OnlineGameNotifier _notifier;
   final _nameCtrl = TextEditingController();
   int _playerCount = 4;
   bool _isConnecting = false;
   bool _navigatedToGame = false;
+  late AnimationController _pulseCtrl;
+  late AnimationController _diceCtrl;
+  late Animation<double> _pulseAnim;
+  late Animation<double> _diceAnim;
 
   @override
   void initState() {
@@ -38,6 +43,27 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
     debugPrint('[Lodu] Backend URL = $_kServerUrl');
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoConnect());
     _notifier.addListener(_onPhaseChanged);
+
+    final auth = AuthService();
+    final user = auth.currentUser;
+    if (user != null && _nameCtrl.text.trim().isEmpty) {
+      _nameCtrl.text = user.displayLabel;
+    }
+
+    // Setup animations for the loading screen
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
+
+    _diceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat();
+    _diceAnim = Tween<double>(begin: 0, end: 1).animate(_diceCtrl);
   }
 
   void _onPhaseChanged() {
@@ -69,6 +95,8 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
 
   @override
   void dispose() {
+    _pulseCtrl.dispose();
+    _diceCtrl.dispose();
     _notifier.removeListener(_onPhaseChanged);
     _nameCtrl.dispose();
     if (!_navigatedToGame) {
@@ -92,17 +120,9 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
           body: Stack(
             children: [
               const Positioned.fill(child: GlowingGridBackground()),
-              Column(
-                children: [
-                  _buildAppBar(ctx),
-                  Expanded(
-                    child:
-                        _notifier.onlinePhase == OnlinePhase.connecting || _isConnecting
-                            ? _ConnectingState(serverUrl: _kServerUrl)
-                            : _buildBody(ctx),
-                  ),
-                ],
-              ),
+              _notifier.onlinePhase == OnlinePhase.connecting || _isConnecting
+                  ? _buildLoadingState()
+                  : _buildBody(ctx),
             ],
           ),
         );
@@ -110,26 +130,94 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: AppTheme.bgPanel,
-      title: const Text(
-        'Play Online',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-        ),
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Animated dice row
+          AnimatedBuilder(
+            animation: _diceAnim,
+            builder: (_, __) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _AnimatedDie(value: 4, animValue: _diceAnim.value),
+                  const SizedBox(width: 16),
+                  _AnimatedDie(value: 2, animValue: _diceAnim.value),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 32),
+          // Loading text
+          const Text(
+            'Activating Server',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Server URL with pulse effect
+          AnimatedBuilder(
+            animation: _pulseCtrl,
+            builder: (_, __) {
+              return Opacity(
+                opacity: _pulseAnim.value,
+                child: Text(
+                  _kServerUrl,
+                  style: TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          // Progress indicator
+          const SizedBox(
+            width: 180,
+            child: LinearProgressIndicator(
+              backgroundColor: Color(0xFF1e293b),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                AppTheme.accentBlue,
+              ),
+              minHeight: 3,
+              borderRadius: BorderRadius.all(Radius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 32),
+          // Connecting status
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.accentGreen,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Connecting...',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 14),
-          child: _ConnectionPill(connected: _notifier.isHubConnected),
-        ),
-      ],
     );
   }
 
@@ -437,56 +525,54 @@ class _OnlineSetupScreenState extends State<OnlineSetupScreen> {
       );
 }
 
-class _ConnectionPill extends StatelessWidget {
-  final bool connected;
-  const _ConnectionPill({required this.connected});
-  @override
-  Widget build(BuildContext context) {
-    return StatusPill(
-      text: connected ? 'Live' : 'Offline',
-      color: connected ? AppTheme.accentGreen : AppTheme.accentRed,
-      icon: connected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-      pulse: connected,
-    );
-  }
-}
+class _AnimatedDie extends StatelessWidget {
+  final int value;
+  final double animValue;
 
-class _ConnectingState extends StatelessWidget {
-  final String serverUrl;
-  const _ConnectingState({required this.serverUrl});
+  const _AnimatedDie({required this.value, required this.animValue});
+
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(
-            width: 48,
-            height: 48,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: AppTheme.accentGreen,
-            ),
+    return Transform.rotate(
+      angle: animValue * 0.5,
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFF2563eb),
+              Color(0xFF60a5fa),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          const SizedBox(height: 18),
-          const Text(
-            'Connecting to server…',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF3b82f6).withValues(alpha: 0.4),
+              blurRadius: 12,
+              spreadRadius: 2,
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            serverUrl,
+          ],
+        ),
+        child: Center(
+          child: Text(
+            '$value',
             style: const TextStyle(
-              color: AppTheme.textMuted,
-              fontSize: 11,
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  color: Colors.black26,
+                  blurRadius: 2,
+                  offset: Offset(1, 1),
+                ),
+              ],
             ),
-            textAlign: TextAlign.center,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -655,7 +741,7 @@ class _RoomTile extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-                        Color(0xFF1e293b),
+            Color(0xFF1e293b),
             Color(0xFF0f172a),
           ],
         ),

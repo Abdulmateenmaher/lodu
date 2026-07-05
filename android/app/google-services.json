@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "117025729312",
+    "firebase_url": "https://ludo-e88c6-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "ludo-e88c6",
+    "storage_bucket": "ludo-e88c6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:117025729312:android:0109f2c93a8932ce000545",
+        "android_client_info": {
+          "package_name": "com.example.lodu"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "117025729312-q8s7egb3a43k6gjql6vsgtuosp28utou.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdLa1SMbptFmwWfO9G7OZSphTbDeNVoPQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "117025729312-q8s7egb3a43k6gjql6vsgtuosp28utou.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -60,7 +60,7 @@ class _ConfettiOverlayState extends State<ConfettiOverlay>
     return IgnorePointer(
       child: AnimatedBuilder(
         animation: _ctrl,
-        builder: (_, __) {
+        builder: (_, _) {
           return CustomPaint(
             painter: _ConfettiPainter(
               progress: _ctrl.value,

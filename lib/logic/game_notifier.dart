@@ -9,6 +9,8 @@ import '../models/game_settings.dart';
 import '../models/move_destination.dart';
 import '../models/match_record.dart';
 import '../services/audio_service.dart';
+import '../services/auth_service.dart';
+import '../services/firebase_history_service.dart';
 import 'game_logic.dart';
 
 enum GamePhase { setup, play, end }
@@ -40,14 +42,45 @@ class GameNotifier extends ChangeNotifier {
     if (str != null) {
       final List decoded = jsonDecode(str);
       history = decoded.map((e) => MatchRecord.fromJson(e)).toList();
-      notifyListeners();
+    } else {
+      history = [];
     }
+    _syncFromFirebase();
+  }
+
+  Future<void> _syncFromFirebase() async {
+    try {
+      final auth = AuthService();
+      final user = auth.currentUser;
+      if (user == null) {
+        notifyListeners();
+        return;
+      }
+      final fbHistory = await FirebaseHistoryService().loadMatchRecords(user.uid);
+      if (fbHistory.isNotEmpty) {
+        history = fbHistory;
+      }
+    } catch (e) {
+      // keep local history on error
+    }
+    notifyListeners();
   }
 
   Future<void> _saveHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = history.map((e) => e.toJson()).toList();
     prefs.setString('match_history', jsonEncode(jsonList));
+  }
+
+  Future<void> _saveToFirebase(MatchRecord record) async {
+    try {
+      final auth = AuthService();
+      final user = auth.currentUser;
+      if (user == null) return;
+      await FirebaseHistoryService().saveMatchRecord(user.uid, record);
+    } catch (e) {
+      // silent — local history already saved
+    }
   }
 
   void updateSettings(GameSettings s) {
@@ -821,6 +854,7 @@ class GameNotifier extends ChangeNotifier {
       final playerIsAI = newPlayers.map((p) => p.isAI).toList();
       history.add(MatchRecord(winnerLabel: winnerLabel, playerNames: playerNames, playerIsAI: playerIsAI, playedAt: DateTime.now(), stars: 3, statusText: losers.isEmpty ? 'Solo Victory!' : 'Defeated: ${losers.join(', ')}'));
       _saveHistory();
+      _saveToFirebase(history.last);
       phase = GamePhase.end;
       _aiTurnActive = false;
       AudioService.stopAll();

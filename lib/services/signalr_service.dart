@@ -1,47 +1,60 @@
-import 'package:signalr_netcore/signalr_client.dart';
+import 'package:logging/logging.dart';
 import 'package:signalr_netcore/ihub_protocol.dart';
+import 'package:signalr_netcore/signalr_client.dart';
 
 class SignalRService {
   static const String _hubPath = '/gamehub';
+  static final Logger _log = Logger('SignalRService');
 
   HubConnection? _connection;
   bool get isConnected => _connection?.state == HubConnectionState.Connected;
 
   Future<void> connect(String serverUrl) async {
+    if (_connection != null) {
+      final state = _connection!.state;
+      if (state == HubConnectionState.Connected ||
+          state == HubConnectionState.Connecting ||
+          state == HubConnectionState.Reconnecting) {
+        return;
+      }
+    }
+
+    _log.info('Connecting to $serverUrl$_hubPath');
     _connection = HubConnectionBuilder()
         .withUrl(
           '$serverUrl$_hubPath',
           options: HttpConnectionOptions(
-            // The server can take 5–10+ seconds to complete a single hub call
-            // when AI chains (multiple 6s / helper pass-throughs) are in flight.
-            // 30s is too tight — it caused the client to time out mid-turn and
-            // diverge from server state, producing the "hang" symptom.
-            requestTimeout: 120000,
-            skipNegotiation: false,
-            // Leave `transport` unset so the client / server negotiate the
-            // best transport automatically: WebSockets is preferred, and the
-            // client transparently falls back to Server-Sent Events and then
-            // Long Polling if the host/proxy strips the Upgrade header.
-            // NOTE: The `signalr_netcore` 1.4.x API does NOT support combining
-            // multiple `HttpTransportType` values with `|` — the `transport`
-            // field on `HttpConnectionOptions` is a single `Object?` value.
+            logger: _log,
+            transport: HttpTransportType.WebSockets,
             headers: MessageHeaders()..setHeaderValue('Content-Type', 'application/json'),
           ),
         )
         .withAutomaticReconnect(retryDelays: [1000, 2000, 4000, 8000, 16000])
+        .configureLogging(_log)
         .build();
 
-    // Allow the server up to 2 minutes for a single hub invocation.
-    // (With the iterative CheckAndAutoPlay refactor this is only a safety
-    // net — the typical hub call now completes in < 1s.)
     _connection!.serverTimeoutInMilliseconds = 120000;
     _connection!.keepAliveIntervalInMilliseconds = 15000;
 
-    await _connection!.start();
+    _connection!.onclose(({error}) {
+      _log.warning('SignalR connection closed: $error');
+    });
+
+    try {
+      await _connection!.start();
+      _log.info('SignalR connection started successfully');
+    } catch (e) {
+      final msg = e.toString();
+      _log.severe('SignalR start failed: $e');
+      _connection = null;
+      throw Exception('Cannot connect to server: $msg');
+    }
   }
 
   Future<void> disconnect() async {
-    await _connection?.stop();
+    try {
+      await _connection?.stop();
+    } catch (_) {}
     _connection = null;
   }
 
@@ -52,6 +65,11 @@ class SignalRService {
 
   Future<void> invoke(String method, {List<Object>? args}) async {
     if (!isConnected) throw Exception('Not connected to server');
-    await _connection!.invoke(method, args: args);
+    try {
+      await _connection!.invoke(method, args: args);
+    } catch (e) {
+      _log.warning('Invoke $method failed: $e');
+      rethrow;
+    }
   }
 }
