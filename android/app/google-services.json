@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "117025729312-sn0b80aftel35ctdk08t4q85ma5c2p04.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.lodu",
+            "certificate_hash": "414e0bf047bf4a78d027529d1ce6fe96aae19831"
+          }
+        },
+        {
           "client_id": "117025729312-q8s7egb3a43k6gjql6vsgtuosp28utou.apps.googleusercontent.com",
           "client_type": 3
         }

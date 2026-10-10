@@ -1,9 +1,16 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 enum AuthMode { signIn, signUp }
+
+/// Web OAuth client id (client_type 3) from google-services.json / Firebase
+/// console. Used as the Google Sign-In client on web and as the
+/// `serverClientId` on Android so Firebase can verify the idToken.
+const String kGoogleWebClientId =
+    '117025729312-q8s7egb3a43k6gjql6vsgtuosp28utou.apps.googleusercontent.com';
 
 class AuthUser {
   final String uid;
@@ -58,8 +65,6 @@ class AuthService extends ChangeNotifier {
     return _auth!;
   }
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
-
   bool _firebaseAvailable = false;
   bool get isFirebaseAvailable => _firebaseAvailable;
 
@@ -99,44 +104,42 @@ class AuthService extends ChangeNotifier {
 
   Future<AuthUser> signInWithGoogle() async {
     _ensureFirebase();
-    if (kIsWeb) {
-      final googleProvider = GoogleAuthProvider();
-      final credential = await _firebaseAuth.signInWithPopup(googleProvider);
-      final user = credential.user;
-      if (user == null) throw AuthException('cancelled', 'Google sign-in was cancelled.');
-      _currentUser = AuthUser.fromFirebase(user);
-      notifyListeners();
-      return _currentUser!;
-    }
-
     try {
-      await _googleSignIn.signOut();
-    } catch (_) {}
+      // Web: Firebase handles the OAuth flow via a popup.
+      if (kIsWeb) {
+        final googleProvider = GoogleAuthProvider();
+        final credential = await _firebaseAuth.signInWithPopup(googleProvider);
+        final user = credential.user;
+        if (user == null) throw AuthException('cancelled', 'Google sign-in was cancelled.');
+        _currentUser = AuthUser.fromFirebase(user);
+        notifyListeners();
+        return _currentUser!;
+      }
 
-    GoogleSignInAccount? googleUser;
-    try {
-      googleUser = await _googleSignIn.signIn();
-    } catch (e) {
-      throw AuthException('google-play-unavailable', 'Google Play services unavailable. Make sure Google Play Services are up to date. ($e)');
-    }
-    if (googleUser == null) {
-      throw AuthException('cancelled', 'Google sign-in was cancelled.');
-    }
+      // Mobile (Android/iOS): Use the native google_sign_in package (7.x).
+      // In google_sign_in 7.x GoogleSignIn is a singleton that MUST be
+      // initialized before use. serverClientId (the Web OAuth client id) is
+      // REQUIRED on Android so an idToken is returned for Firebase Auth.
+      final googleSignIn = GoogleSignIn.instance;
+      await googleSignIn.initialize(
+        serverClientId: kGoogleWebClientId,
+      );
 
-    final googleAuth = await googleUser.authentication;
-    if (googleAuth.idToken == null) {
-      throw AuthException('no-id-token', 'Could not get ID token from Google. Check SHA-1 in Firebase Console > Project Settings > Your apps.');
-    }
+      final googleUser = await googleSignIn.authenticate();
+      final idToken = googleUser.authentication.idToken;
+      if (idToken == null) {
+        throw AuthException(
+          'no-id-token',
+          'Could not get ID token from Google. Check SHA-1 in Firebase Console > Project Settings > Your apps.',
+        );
+      }
 
-    final credential = GoogleAuthProvider.credential(
-      idToken: googleAuth.idToken,
-      accessToken: googleAuth.accessToken,
-    );
+      final credential = GoogleAuthProvider.credential(idToken: idToken);
 
-    try {
       final userCredential = await _firebaseAuth.signInWithCredential(credential);
       final user = userCredential.user;
       if (user == null) throw AuthException('unknown', 'Failed to sign in with Google.');
+
       _currentUser = AuthUser.fromFirebase(user);
       notifyListeners();
       return _currentUser!;
@@ -156,8 +159,18 @@ class AuthService extends ChangeNotifier {
           msg = 'Firebase Auth error (${e.code}): ${e.message}';
       }
       throw AuthException(e.code, msg);
+    } on GoogleSignInException catch (e) {
+      throw AuthException(
+        'google-sign-in-error',
+        'Google sign-in failed (${e.code}): ${e.description ?? e.toString()}',
+      );
+    } on PlatformException catch (e) {
+      throw AuthException(
+        'google-play-unavailable',
+        'Google Play services unavailable. Make sure Google Play Services are up to date. (${e.code}: ${e.message})',
+      );
     } catch (e) {
-      rethrow;
+      throw AuthException('google-sign-in-error', 'Google sign-in failed: $e');
     }
   }
 
@@ -207,19 +220,20 @@ class AuthService extends ChangeNotifier {
   Future<void> signOut() async {
     if (!_firebaseAvailable) return;
     await _firebaseAuth.signOut();
-    await _googleSignIn.signOut();
     _currentUser = null;
     notifyListeners();
   }
 
   void _ensureFirebase() {
     if (!_firebaseAvailable) {
-      throw AuthException('unavailable', 'Firebase is not configured. Please add google-services.json or GoogleService-Info.plist.');
+      throw AuthException(
+        'unavailable',
+        'Firebase is not configured. Please add google-services.json or GoogleService-Info.plist.',
+      );
     }
   }
 
   Future<void> disposeAsync() async {
     await _userSub?.cancel();
-    await _googleSignIn.signOut();
   }
 }
