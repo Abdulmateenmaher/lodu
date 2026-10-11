@@ -75,10 +75,11 @@ class _LobbyScreen extends StatelessWidget {
       body: Stack(
         children: [
           const Positioned.fill(child: GlowingGridBackground()),
-          Column(
-            children: [
-              _buildAppBar(notifier, context),
-              Expanded(
+          Positioned.fill(
+            child: Column(
+              children: [
+                _buildAppBar(notifier, context),
+                Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -171,6 +172,7 @@ class _LobbyScreen extends StatelessWidget {
                 ),
               ),
             ],
+            ),
           ),
         ],
       ),
@@ -797,8 +799,9 @@ const SizedBox(height: 6),
             else
               Text('Tap a piece to move',
                   style: TextStyle(color: color, fontSize: 11)),
-          ],
-        ),
+],
+          ),
+
       ),
     );
   }

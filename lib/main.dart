@@ -102,7 +102,8 @@ class _RootRouter extends StatelessWidget {
   Widget build(BuildContext context) {
     final game = context.watch<GameNotifier>();
 
-    return AnimatedSwitcher(
+    return SafeArea(
+      child: AnimatedSwitcher(
       duration: AppTheme.durSlow,
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
@@ -129,7 +130,8 @@ class _RootRouter extends StatelessWidget {
         key: ValueKey(game.phase),
         child: _phaseScreen(game.phase),
       ),
-    );
+    ),
+  );
   }
 
   Widget _phaseScreen(GamePhase phase) {

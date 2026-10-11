@@ -11,6 +11,7 @@ import '../models/match_record.dart';
 import '../services/audio_service.dart';
 import '../services/auth_service.dart';
 import '../services/firebase_history_service.dart';
+import '../services/sqlite_history_service.dart';
 import 'game_logic.dart';
 
 enum GamePhase { setup, play, end }
@@ -37,14 +38,25 @@ class GameNotifier extends ChangeNotifier {
   }
 
   Future<void> _loadHistory() async {
+    final sqlite = SqliteHistoryService();
+    final records = await sqlite.getAllMatches();
+    history = records;
+
     final prefs = await SharedPreferences.getInstance();
-    final str = prefs.getString('match_history');
-    if (str != null) {
-      final List decoded = jsonDecode(str);
-      history = decoded.map((e) => MatchRecord.fromJson(e)).toList();
-    } else {
-      history = [];
+    final migrated = prefs.getBool('history_migrated_to_sqlite') ?? false;
+    if (!migrated) {
+      final str = prefs.getString('match_history');
+      if (str != null) {
+        final List decoded = jsonDecode(str);
+        final oldRecords = decoded.map((e) => MatchRecord.fromJson(e)).toList();
+        if (oldRecords.isNotEmpty) {
+          await sqlite.migrateFromSharedPrefs(oldRecords);
+          history = oldRecords;
+        }
+      }
+      await prefs.setBool('history_migrated_to_sqlite', true);
     }
+
     _syncFromFirebase();
   }
 
@@ -59,6 +71,11 @@ class GameNotifier extends ChangeNotifier {
       final fbHistory = await FirebaseHistoryService().loadMatchRecords(user.uid);
       if (fbHistory.isNotEmpty) {
         history = fbHistory;
+        final sqlite = SqliteHistoryService();
+        await sqlite.clearAllHistory();
+        for (final record in fbHistory) {
+          await sqlite.insertMatchRecord(record);
+        }
       }
     } catch (e) {
       // keep local history on error
@@ -66,10 +83,12 @@ class GameNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _saveHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = history.map((e) => e.toJson()).toList();
-    prefs.setString('match_history', jsonEncode(jsonList));
+  Future<void> saveHistory() async {
+    final sqlite = SqliteHistoryService();
+    await sqlite.clearAllHistory();
+    for (final record in history) {
+      await sqlite.insertMatchRecord(record);
+    }
   }
 
   Future<void> _saveToFirebase(MatchRecord record) async {
@@ -853,7 +872,7 @@ class GameNotifier extends ChangeNotifier {
       final playerNames = newPlayers.map((p) => _nameOf(p)).toList();
       final playerIsAI = newPlayers.map((p) => p.isAI).toList();
       history.add(MatchRecord(winnerLabel: winnerLabel, playerNames: playerNames, playerIsAI: playerIsAI, playedAt: DateTime.now(), stars: 3, statusText: losers.isEmpty ? 'Solo Victory!' : 'Defeated: ${losers.join(', ')}'));
-      _saveHistory();
+      saveHistory();
       _saveToFirebase(history.last);
       phase = GamePhase.end;
       _aiTurnActive = false;

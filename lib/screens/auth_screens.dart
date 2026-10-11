@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
@@ -988,7 +989,7 @@ class _GoogleSignInButton extends StatelessWidget {
                 ),
               )
             else
-              _GoogleIcon(),
+              GoogleIcon(),
             const SizedBox(width: 12),
             Text(
               isLoading ? 'Please wait...' : 'Continue with Google',
@@ -1005,22 +1006,22 @@ class _GoogleSignInButton extends StatelessWidget {
   }
 }
 
-class _GoogleIcon extends StatelessWidget {
-  const _GoogleIcon();
+class GoogleIcon extends StatelessWidget {
+  final double size;
+  final Color color;
+
+  const GoogleIcon({
+    super.key,
+    this.size = 22,
+    this.color = Colors.white,
+  });
+
   @override
   Widget build(BuildContext context) {
-    return Image.network(
-      'https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg',
-      width: 22,
-      height: 22,
-      errorBuilder: (c, o, s) {
-        return Container(
-          width: 22,
-          height: 22,
-          decoration: const BoxDecoration(),
-          child: const Icon(Icons.public_rounded, size: 20, color: Colors.white),
-        );
-      },
+    return FaIcon(
+      FontAwesomeIcons.google,
+      color: color,
+      size: size,
     );
   }
 }

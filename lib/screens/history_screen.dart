@@ -4,7 +4,9 @@ import '../constants/board_constants.dart';
 import '../logic/game_notifier.dart';
 import '../models/match_record.dart';
 import '../services/audio_service.dart';
+import '../services/sqlite_history_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/glass_card.dart';
 import '../widgets/common/glowing_grid_background.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -16,6 +18,8 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   String _filter = 'all';
+  bool _isEditing = false;
+  final Set<int> _selectedMatches = {};
 
   @override
   Widget build(BuildContext context) {
@@ -27,11 +31,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: Stack(
         children: [
           const Positioned.fill(child: GlowingGridBackground()),
-          Column(
-            children: [
-              _buildAppBar(history),
-              if (history.isNotEmpty) _buildFilterBar(),
-              Expanded(
+          Positioned.fill(
+            child: Column(
+              children: [
+                _buildAppBar(history),
+                if (history.isNotEmpty) _buildFilterBar(),
+                if (_isEditing) _buildEditBar(history),
+                Expanded(
                 child: history.isEmpty
                     ? const _EmptyState()
                     : (filtered.isEmpty
@@ -42,17 +48,210 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             itemBuilder: (context, index) {
                               final record =
                                   filtered[filtered.length - 1 - index];
+                              final matchNumber = history.length -
+                                  history.indexOf(record);
+                              final matchId = _getMatchId(history, record);
                               return _MatchCard(
                                 record: record,
-                                matchNumber: history.length -
-                                    history.indexOf(record),
+                                matchNumber: matchNumber,
+                                matchId: matchId,
+                                isEditing: _isEditing,
+                                isSelected: _selectedMatches.contains(matchId),
+                                onToggleSelect: () => _toggleSelect(matchId),
+                                onDelete: () => _deleteMatch(matchId, record),
+                                onEdit: () => _editMatch(matchId, record),
                               );
                             },
                           )),
               ),
             ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  int _getMatchId(List<MatchRecord> history, MatchRecord record) {
+    return history.indexOf(record);
+  }
+
+  void _toggleSelect(int matchId) {
+    setState(() {
+      if (_selectedMatches.contains(matchId)) {
+        _selectedMatches.remove(matchId);
+      } else {
+        _selectedMatches.add(matchId);
+      }
+    });
+  }
+
+  void _deleteMatch(int matchId, MatchRecord record) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgPanel,
+        title: const Text('Delete Match', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Delete this match?',
+          style: TextStyle(color: AppTheme.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final notifier = context.read<GameNotifier>();
+      notifier.history.remove(record);
+      await notifier.saveHistory();
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Match deleted'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearAllHistory() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgPanel,
+        title: const Text('Clear All History', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'This will delete all match records. This action cannot be undone.',
+          style: TextStyle(color: AppTheme.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear All', style: TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final notifier = context.read<GameNotifier>();
+      notifier.history.clear();
+      await notifier.saveHistory();
+      if (mounted) {
+        setState(() {
+          _isEditing = false;
+          _selectedMatches.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('History cleared'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _editMatch(int matchId, MatchRecord record) {
+    int stars = record.stars;
+    final controller = TextEditingController(text: record.statusText);
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: AppTheme.bgPanel,
+          title: const Text('Edit Match', style: TextStyle(color: Colors.white)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Stars: $stars',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (i) => IconButton(
+                  icon: Icon(
+                    Icons.star_rounded,
+                    color: i < stars ? AppTheme.accentYellow : AppTheme.borderStrong,
+                    size: 28,
+                  ),
+                  onPressed: () => setState(() => stars = i + 1),
+                )),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Notes',
+                  labelStyle: TextStyle(color: AppTheme.textMuted),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppTheme.border),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppTheme.accentBlue),
+                  ),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final notifier = context.read<GameNotifier>();
+                final updatedRecord = MatchRecord(
+                  winnerLabel: record.winnerLabel,
+                  playerNames: record.playerNames,
+                  playerIsAI: record.playerIsAI,
+                  playedAt: record.playedAt,
+                  stars: stars,
+                  statusText: controller.text,
+                );
+                final index = notifier.history.indexOf(record);
+                if (index >= 0) {
+                  notifier.history[index] = updatedRecord;
+                  await notifier.saveHistory();
+                }
+                if (mounted) {
+                  Navigator.pop(context);
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Match updated'),
+                      backgroundColor: AppTheme.accentGreen,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save', style: TextStyle(color: AppTheme.accentGreen)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -97,11 +296,104 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(width: 12),
         ],
       ),
+      actions: [
+        if (!_isEditing && history.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.edit_rounded, color: AppTheme.textMuted),
+            onPressed: () => setState(() => _isEditing = true),
+            tooltip: 'Edit History',
+          ),
+        if (_isEditing)
+          IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            onPressed: () => setState(() {
+              _isEditing = false;
+              _selectedMatches.clear();
+            }),
+            tooltip: 'Done',
+          ),
+      ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
         child: Container(height: 1, color: AppTheme.border),
       ),
     );
+  }
+
+  Widget _buildEditBar(List<MatchRecord> history) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: AppTheme.bgPanel.withValues(alpha: 0.9),
+      child: Row(
+        children: [
+          Text(
+            '${_selectedMatches.length} selected',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          if (_selectedMatches.isNotEmpty)
+            TextButton.icon(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('Delete Selected'),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.accentRed),
+              onPressed: _deleteSelectedMatches,
+            ),
+          TextButton.icon(
+            icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+            label: const Text('Clear All'),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.accentRed),
+            onPressed: _clearAllHistory,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSelectedMatches() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgPanel,
+        title: const Text('Delete Selected', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Delete ${_selectedMatches.length} selected matches?',
+          style: TextStyle(color: AppTheme.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final notifier = context.read<GameNotifier>();
+      final toDelete = _selectedMatches.toList()..sort((a, b) => b.compareTo(a));
+      for (final id in toDelete) {
+        if (id < notifier.history.length) {
+          notifier.history.removeAt(id);
+        }
+      }
+      await notifier.saveHistory();
+      if (mounted) {
+        setState(() {
+          _selectedMatches.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${toDelete.length} matches deleted'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildFilterBar() {
@@ -179,7 +471,7 @@ class _FilterChip extends StatelessWidget {
             color: selected ? Colors.white : AppTheme.textMuted,
             fontSize: 12,
             fontWeight: FontWeight.w800,
-            letterSpacing: 0.5,
+letterSpacing: 0.5,
           ),
         ),
       ),
@@ -262,7 +554,23 @@ class _NoMatchesState extends StatelessWidget {
 class _MatchCard extends StatelessWidget {
   final MatchRecord record;
   final int matchNumber;
-  const _MatchCard({required this.record, required this.matchNumber});
+  final int matchId;
+  final bool isEditing;
+  final bool isSelected;
+  final VoidCallback onToggleSelect;
+  final VoidCallback onDelete;
+  final VoidCallback onEdit;
+
+  const _MatchCard({
+    required this.record,
+    required this.matchNumber,
+    required this.matchId,
+    required this.isEditing,
+    required this.isSelected,
+    required this.onToggleSelect,
+    required this.onDelete,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -278,10 +586,15 @@ class _MatchCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppTheme.bgPanel, AppTheme.bgPanelAlt],
+          colors: isSelected
+              ? [AppTheme.accentBlueDeep.withValues(alpha: 0.3), AppTheme.accentBlueDeep.withValues(alpha: 0.1)]
+              : [AppTheme.bgPanel, AppTheme.bgPanelAlt],
         ),
         borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(
+          color: isSelected ? AppTheme.accentBlue : AppTheme.border,
+          width: isSelected ? 2 : 1,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Colors.black26,
@@ -290,92 +603,163 @@ class _MatchCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentBlueDeep.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(6),
+                Row(
+                  children: [
+                    if (isEditing) ...[
+                      GestureDetector(
+                        onTap: onToggleSelect,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected ? AppTheme.accentBlue : AppTheme.borderStrong,
+                              width: 2,
+                            ),
+                            color: isSelected ? AppTheme.accentBlue : Colors.transparent,
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check, color: Colors.white, size: 16)
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentBlueDeep.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Match #$matchNumber',
+                        style: const TextStyle(
+                          color: AppTheme.accentBlue,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (!isEditing) ...[
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(3, (i) {
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 1),
+                            child: Icon(
+                              Icons.star_rounded,
+                              size: 14,
+                              color: i < record.stars
+                                  ? AppTheme.accentYellow
+                                  : AppTheme.borderStrong,
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        timeStr,
+                        style: const TextStyle(
+                          color: AppTheme.textFaint,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (isEditing) ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, color: AppTheme.accentBlue, size: 20),
+                        onPressed: onEdit,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'Edit',
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: AppTheme.accentRed, size: 20),
+                        onPressed: onDelete,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'Delete',
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _SideRow(
+                  iconData: Icons.emoji_events_rounded,
+                  iconGradient: AppTheme.trophyGradient,
+                  label: 'Won',
+                  labelColor: AppTheme.accentGreen,
+                  names: _splitWinners(),
+                  record: rec,
+                ),
+                const SizedBox(height: 8),
+                if (losers.isNotEmpty)
+                  _SideRow(
+                    iconData: Icons.close_rounded,
+                    iconGradient: const LinearGradient(
+                      colors: [AppTheme.accentRed, Color(0xFFf43f5e)],
+                    ),
+                    label: 'Defeated',
+                    labelColor: AppTheme.accentRed,
+                    names: losers,
+                    record: rec,
+                  )
+                else
+                  _SideRow(
+                    iconData: Icons.shield_rounded,
+                    iconGradient: const LinearGradient(
+                      colors: [AppTheme.accentGreen, Color(0xFF22c55e)],
+                    ),
+                    label: 'Solo Victory',
+                    labelColor: AppTheme.accentGreen,
+                    names: const [],
+                    emptyMessage: 'No opponents finished',
+                    record: rec,
                   ),
-                  child: Text(
-                    'Match #$matchNumber',
-                    style: const TextStyle(
-                      color: AppTheme.accentBlue,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.4,
+                if (record.statusText.isNotEmpty && !isEditing) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgDeep.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.note_alt_outlined, color: AppTheme.textMuted, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            record.statusText,
+                            style: const TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const Spacer(),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(3, (i) {
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 1),
-                      child: Icon(
-                        Icons.star_rounded,
-                        size: 14,
-                        color: i < record.stars
-                            ? AppTheme.accentYellow
-                            : AppTheme.borderStrong,
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  timeStr,
-                  style: const TextStyle(
-                    color: AppTheme.textFaint,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                ],
               ],
             ),
-            const SizedBox(height: 12),
-            _SideRow(
-              iconData: Icons.emoji_events_rounded,
-              iconGradient: AppTheme.trophyGradient,
-              label: 'Won',
-              labelColor: AppTheme.accentGreen,
-              names: _splitWinners(),
-              record: rec,
-            ),
-            const SizedBox(height: 8),
-            if (losers.isNotEmpty)
-              _SideRow(
-                iconData: Icons.close_rounded,
-                iconGradient: const LinearGradient(
-                  colors: [AppTheme.accentRed, Color(0xFFf43f5e)],
-                ),
-                label: 'Defeated',
-                labelColor: AppTheme.accentRed,
-                names: losers,
-                record: rec,
-              )
-            else
-              _SideRow(
-                iconData: Icons.shield_rounded,
-                iconGradient: const LinearGradient(
-                  colors: [AppTheme.accentGreen, Color(0xFF22c55e)],
-                ),
-                label: 'Solo Victory',
-                labelColor: AppTheme.accentGreen,
-                names: const [],
-                emptyMessage: 'No opponents finished',
-                record: rec,
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

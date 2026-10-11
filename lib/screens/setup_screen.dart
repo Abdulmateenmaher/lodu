@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import '../constants/board_constants.dart';
 import '../logic/game_notifier.dart';
@@ -107,50 +108,92 @@ class _SetupScreenState extends State<SetupScreen>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgDeep,
-      body: Stack(
-        children: [
-          const Positioned.fill(child: GlowingGridBackground()),
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.gap20),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: FadeTransition(
-                    opacity: _enterAnim,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.05),
-                        end: Offset.zero,
-                      ).animate(_enterAnim),
-                      child: Column(
-                        children: [
-                          _buildTopBar(),
-                          const SizedBox(height: AppTheme.gap12),
-                          _buildLogo(),
-                          const SizedBox(height: AppTheme.gap24),
-                          _buildPlayersCard(),
-                          const SizedBox(height: AppTheme.gap20),
-                          _buildStartButton(),
-                          const SizedBox(height: AppTheme.gap12),
-                          _buildSecondaryActions(),
-                          const SizedBox(height: AppTheme.gap20),
-                        ],
+@override
+Widget build(BuildContext context) {
+  // SAFE FIX for "top-left + 60% empty right" on web:
+  // SetupScreen is hosted inside _RootRouter's AnimatedSwitcher Stack
+  // (main.dart) which passes LOOSE constraints, so any Expand / Positioned.fill
+  // / LayoutBuilder-viewport sizing shrink-wraps to content width.
+  // Fix purely from here: size everything off MediaQuery (real window size),
+  // which is unaffected by the loose parent. No logic changed.
+  final screen = MediaQuery.sizeOf(context);
+  final double screenW = screen.width;
+  final double screenH = screen.height;
+  // Responsive cap: phones full width, tablets 600, wide web 760 centered.
+  final double cap = screenW < 560 ? screenW : screenW < 900 ? 600 : 760;
+  return SizedBox(
+    width: screenW,
+    height: screenH,
+    child: Scaffold(
+    backgroundColor: AppTheme.bgDeep,
+    body: SizedBox(
+      width: screenW,
+      height: screenH,
+      child: Stack(
+      children: [
+        SizedBox(
+          width: screenW,
+          height: screenH,
+          child: const GlowingGridBackground(),
+        ),
+
+        // Full-window scroll area with explicit size (not Positioned.fill,
+        // which collapses when the ancestor Stack is shrink-wrapped).
+        SizedBox(
+          width: screenW,
+          height: screenH,
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppTheme.gap20),
+                  child: ConstrainedBox(
+                    // Force content to be at least window size minus
+                    // padding so short content still fills the screen.
+                    constraints: BoxConstraints(
+                      minHeight: screenH - AppTheme.gap20 * 2,
+                      minWidth: screenW - AppTheme.gap20 * 2,
+                    ),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        width: cap,
+                        child: FadeTransition(
+                          opacity: _enterAnim,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.05),
+                              end: Offset.zero,
+                            ).animate(_enterAnim),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildTopBar(),
+                                const SizedBox(height: AppTheme.gap12),
+                                _buildLogo(),
+                                const SizedBox(height: AppTheme.gap24),
+                                _buildPlayersCard(),
+                                const SizedBox(height: AppTheme.gap20),
+                                _buildStartButton(),
+                                const SizedBox(height: AppTheme.gap12),
+                                _buildSecondaryActions(),
+                                const SizedBox(height: AppTheme.gap20),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
           ),
-        ],
+        ),
+      ],
       ),
-    );
-  }
+    ),
+    ),
+  );
+}
 
   Widget _buildTopBar() {
     final auth = context.watch<AuthService>();
@@ -298,7 +341,6 @@ class _SetupScreenState extends State<SetupScreen>
     );
   }
 }
-
 
 class _CircleIconBtn extends StatelessWidget {
   final IconData icon;
@@ -488,13 +530,21 @@ class _SegmentedToggleState extends State<_SegmentedToggle>
                     return SizedBox(
                       width: 42,
                       child: Center(
-                        child: Icon(
-                          i == 0 ? Icons.person : Icons.computer,
-                          color: isSelected
-                              ? Colors.white
-                              : AppTheme.textSubtle,
-                          size: 18,
-                        ),
+                        child: i == 0
+                            ? Icon(
+                                Icons.person,
+                                color: isSelected
+                                    ? Colors.white
+                                    : AppTheme.textSubtle,
+                                size: 18,
+                              )
+                            : FaIcon(
+                                FontAwesomeIcons.robot,
+                                color: isSelected
+                                    ? Colors.white
+                                    : AppTheme.textSubtle,
+                                size: 18,
+                              ),
                       ),
                     );
                   },

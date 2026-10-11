@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../theme/app_theme.dart';
 
 /// A circular avatar with the player's color, optional icon, and an optional
@@ -61,46 +62,19 @@ class PlayerAvatar extends StatelessWidget {
                 ],
               ),
               child: Center(
-                child: icon != null
-                    ? Icon(icon, color: Colors.white, size: size * 0.5)
-                    : label != null
-                        ? Text(
-                            label!,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: size * 0.38,
-                              shadows: const [
-                                Shadow(
-                                  color: Colors.black54,
-                                  blurRadius: 2,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          )
-                        : const SizedBox.shrink(),
+                child: isAI
+                    ? FaIcon(
+                        FontAwesomeIcons.robot,
+                        color: Colors.white,
+                        size: size * 0.55,
+                      )
+                    : Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: size * 0.55,
+                      ),
               ),
             ),
-            if (isAI)
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Container(
-                  width: size * 0.36,
-                  height: size * 0.36,
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgPanel,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.borderStrong, width: 1),
-                  ),
-                  child: Icon(
-                    Icons.memory,
-                    size: size * 0.22,
-                    color: AppTheme.accentBlue,
-                  ),
-                ),
-              ),
             if (isYou)
               Positioned(
                 right: -2,
